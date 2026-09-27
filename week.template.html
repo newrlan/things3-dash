@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Things: неделя по проектам</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface:#fcfcfb; --card:#ffffff; --border:#e6e5e1; --line:#3a3936;
+    --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#83817b;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6;
+    --cl1:#1c5cab; --cl2:#6da7ec; --op1:#b8322f; --op2:#f0918e; --grid-b:#eceae6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
+      --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b;
+      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
+    --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b;
+      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--surface); color:var(--ink);
+    font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:36px 24px 72px; }
+  @media (max-width: 620px) {
+    .wrap { padding:20px 12px 48px; }
+    h1 { font-size:21px; }
+    .card { padding:14px 12px 10px; }
+    .bar { padding:8px 10px; gap:8px; }
+    .week { min-width:150px; font-size:13px; }
+    .rowlab { font-size:12px; }
+  }
+  .top { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+  h1 { font-size:25px; font-weight:640; letter-spacing:-.02em; margin:0; }
+  .top button { margin-left:auto; }
+
+  .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    background:var(--card); border:1px solid var(--border); border-radius:10px;
+    padding:10px 12px; margin-bottom:16px; }
+  .bar label { font-size:12px; color:var(--ink-2); display:flex; align-items:center; gap:6px; }
+  select { font:inherit; font-size:13px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:7px; padding:5px 8px; }
+  button { font:inherit; font-size:13px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:7px; padding:5px 11px; cursor:pointer; }
+  button:hover:not(:disabled) { border-color:var(--ink-3); }
+  button:disabled { opacity:.4; cursor:default; }
+  .rstat { font-size:12px; color:var(--ink-3); }
+  .week { font-weight:600; font-size:14px; min-width:186px; text-align:center; }
+
+
+  .bhd { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:2px; }
+  .bhd h2 { font-size:15px; font-weight:620; margin:0; }
+  .bhd label { font-size:12px; color:var(--ink-2); display:flex; align-items:center; gap:6px; }
+  .cap { font-size:12px; color:var(--ink-2); margin:0 0 14px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px;
+    padding:18px 20px 14px; margin-bottom:16px; }
+  .chart { width:100%; overflow-x:auto; }
+  svg { display:block; }
+  .rowlab { font-size:13px; font-weight:600; fill:var(--ink-2); cursor:default; }
+  .rowlab:hover { fill:var(--ink); text-decoration:underline; }
+  .val { font-size:10px; font-variant-numeric:tabular-nums; fill:var(--ink-3); }
+
+  .tip, .peek { position:fixed; z-index:20; pointer-events:none; opacity:0;
+    background:var(--card); color:var(--ink); border:1px solid var(--border); border-radius:9px;
+    box-shadow:0 8px 26px rgba(0,0,0,.18); transition:opacity .07s; }
+  .tip { padding:8px 10px; font-size:12px; line-height:1.5;
+    font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tip b { display:block; margin-bottom:3px; font-weight:600; }
+  .tip .r { display:flex; align-items:center; gap:7px; }
+  .tip .r i { width:8px; height:8px; border-radius:2px; }
+  .tip .r.strong { font-weight:600; color:var(--ink); }
+  .tip .r.sep { margin-top:6px; }
+  .tip .r s { text-decoration:none; margin-left:auto; padding-left:16px; }
+  .peek { padding:12px 14px; }
+  .peek h3 { margin:0 0 1px; font-size:13px; font-weight:620; }
+  .peek .m { font-size:11px; color:var(--ink-3); margin-bottom:9px; font-variant-numeric:tabular-nums; }
+  .peek .none { font-size:12px; color:var(--ink-3); }
+
+  .empty { color:var(--ink-3); font-size:13px; padding:20px 2px; }
+  footer { margin-top:24px; font-size:12px; color:var(--ink-3); line-height:1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="top">
+  <h1>Неделя по проектам</h1>
+  <span class="rstat" id="rstat"></span>
+  <button id="refresh" hidden>Обновить данные</button>
+</div>
+
+<div class="bar">
+  <button id="prev">&larr;</button>
+  <span class="week" id="wlabel"></span>
+  <button id="next">&rarr;</button>
+  <button id="today">Текущая неделя</button>
+  <label>Неделя <select id="wsel"></select></label>
+</div>
+
+<div class="card">
+  <div class="bhd"><h2>Распределение закрытий по дням недели</h2></div>
+  <p class="cap" id="pcap"></p>
+  <div class="chart" id="days"></div>
+</div>
+
+<div class="card">
+  <div class="bhd">
+    <h2>Сжигание задач за неделю</h2>
+  </div>
+  <p class="cap" id="bcap"></p>
+  <div class="chart" id="burn"></div>
+</div>
+
+<div class="card">
+  <div class="bhd"><h2>Проекты недели</h2></div>
+  <div class="chart" id="chart"></div>
+</div>
+
+<footer id="foot"></footer>
+</div>
+<div class="tip" id="tip"></div>
+<div class="peek" id="peek"></div>
+
+<script>
+const DATA = /*__DATA__*/;
+const NS = "http://www.w3.org/2000/svg";
+const el = (t, a = {}) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const MON = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
+const MONF = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+const plural = (n,a,b,c) => n%10===1&&n%100!==11?a:(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?b:c);
+const dayw = n => n + " " + plural(n,"день","дня","дней");
+
+const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d; };
+const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const human = d => d.getDate() + " " + MONF[d.getMonth()] + " " + d.getFullYear();
+// a week label spans its Monday to the following Sunday
+const wlabel = ws => {
+  const a = addDays(ws, 0), b = addDays(ws, 6);
+  return a.getDate() + " " + MON[a.getMonth()] + " - " + b.getDate() + " " + MON[b.getMonth()] + " " + b.getFullYear();
+};
+
+const CAT = [
+  { id: "co", name: "Закрыто, создано раньше",    color: () => css("--cl1"), right: 1 },
+  { id: "cn", name: "Закрыто, создано на неделе",  color: () => css("--cl2"), right: 1 },
+  { id: "oo", name: "Открыто, создано раньше",    color: () => css("--op1"), right: 0 },
+  { id: "on", name: "Открыто, создано на неделе",  color: () => css("--op2"), right: 0 }
+];
+
+function counts(p, ws, sun) {
+  const c = { co: 0, cn: 0, oo: 0, on: 0 };
+  for (const [cd, sd] of p.k) {
+    if (cd > sun) continue;
+    const newly = cd >= ws;
+    if (sd && sd >= ws && sd <= sun) c[newly ? "cn" : "co"]++;
+    else if (!sd || sd > sun) c[newly ? "on" : "oo"]++;
+  }
+  return c;
+}
+
+// a project belongs to a week if it already existed then and was not closed before it
+const activeIn = (p, ws, sun) => p.cd <= sun && (!p.ed || p.ed >= ws);
+
+// state as of the end of the displayed week
+const pstate = (p, ws, sun) =>
+  !p.ed ? "open" : (p.ed <= sun ? "wk" : "later");
+const STATE = {
+  wk:    { n: "закрыт на этой неделе", mark: "solid" },
+  later: { n: "был в работе, закрыт позже", mark: "hollow" },
+  open:  { n: "открыт", mark: null }
+};
+
+const tip = document.getElementById("tip"), peek = document.getElementById("peek");
+function showTip(ev, title, rows) {
+  tip.innerHTML = "<b>" + title + "</b>" + rows.map(r =>
+    '<div class="r' + (r.b ? " strong" : "") + (r.top ? " sep" : "") + '">' +
+    (r.c ? '<i style="background:' + r.c + '"></i>' : "") + r.k + "<s>" + r.v + "</s></div>").join("");
+  place(tip, ev);
+}
+function place(node, ev) {
+  node.style.opacity = 1;
+  const b = node.getBoundingClientRect();
+  let x = ev.clientX + 16, y = ev.clientY - b.height - 12;
+  if (x + b.width > innerWidth - 8) x = Math.max(8, ev.clientX - b.width - 16);
+  if (y < 8) y = ev.clientY + 20;
+  y = Math.min(Math.max(8, y), Math.max(8, innerHeight - b.height - 8));
+  node.style.left = x + "px"; node.style.top = y + "px";
+}
+const hideTip = () => tip.style.opacity = 0;
+const hidePeek = () => peek.style.opacity = 0;
+
+function barR(x, y, w, h, r) {
+  r = Math.min(r, h / 2, w);
+  return `M${x},${y} L${x+w-r},${y} Q${x+w},${y} ${x+w},${y+r} L${x+w},${y+h-r} Q${x+w},${y+h} ${x+w-r},${y+h} L${x},${y+h} Z`;
+}
+function barL(x, y, w, h, r) {
+  r = Math.min(r, h / 2, w);
+  return `M${x+w},${y} L${x+r},${y} Q${x},${y} ${x},${y+r} L${x},${y+h-r} Q${x},${y+h} ${x+r},${y+h} L${x+w},${y+h} Z`;
+}
+function barTop(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y+h} L${x},${y+r} Q${x},${y} ${x+r},${y} L${x+w-r},${y} Q${x+w},${y} ${x+w},${y+r} L${x+w},${y+h} Z`;
+}
+function barBot(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y} L${x+w},${y} L${x+w},${y+h-r} Q${x+w},${y+h} ${x+w-r},${y+h} L${x+r},${y+h} Q${x},${y+h} ${x},${y+h-r} Z`;
+}
+
+// the per-day chart from projects.html, shrunk to fit a hover panel
+function peekChart(p) {
+  const days = [];
+  for (const e of p.r) for (let i = 0; i < e[4]; i++) days.push(e);
+  const W = 620;
+  const pitch = Math.max(0.3, Math.min(6, W / days.length));   // sub-pixel is fine: the panel must stay 620 wide
+  const maxUp = Math.max(1, ...days.map(d => d[0] + d[1]));
+  const maxDn = Math.max(1, ...days.map(d => d[2] + d[3]));
+  const unit = Math.max(1, Math.min(7, 150 / maxUp));
+  const upH = maxUp * unit, dnH = maxDn * unit, base = 4 + upH;
+  const hh = p.h || [], hRow = 14, gTop = base + dnH + 6 + (hh.length ? 8 : 0);
+  const w = Math.ceil(days.length * pitch) + 2, h = gTop + hh.length * hRow + 2;
+  const bw = Math.max(0.6, pitch - (pitch > 3 ? 1 : 0));
+
+  const svg = el("svg", { width: w, height: h, viewBox: `0 0 ${w} ${h}` });
+  svg.appendChild(el("line", { x1: 0, y1: base + .5, x2: w, y2: base + .5, stroke: css("--line"), "stroke-width": 1 }));
+  days.forEach((d, i) => {
+    const x = 1 + i * pitch, [oo, no, oc, nc] = d;
+    if (oo) svg.appendChild(el("path", { d: barTop(x, base - oo * unit, bw, oo * unit, 1), fill: css("--op1") }));
+    if (no) svg.appendChild(el("path", { d: barTop(x, base - (oo + no) * unit, bw, no * unit, 1), fill: css("--op2") }));
+    if (oc) svg.appendChild(el("path", { d: barBot(x, base + 1, bw, oc * unit, 1), fill: css("--cl1") }));
+    if (nc) svg.appendChild(el("path", { d: barBot(x, base + 1 + oc * unit, bw, nc * unit, 1), fill: css("--cl2") }));
+  });
+
+  // headings, same x scale: solid once started, dashed while nothing in them is closed
+  hh.forEach((g, i) => {
+    const y = gTop + i * hRow;
+    const x0 = 1 + g.o * pitch, x1 = 1 + (g.e + 1) * pitch;
+    svg.appendChild(el("rect", {
+      x: x0 + .5, y: y + 6, width: Math.max(x1 - x0, 2), height: 5, rx: 2,
+      fill: g.started ? css("--s3") : "none",
+      stroke: g.started ? "none" : css("--s3"),
+      "stroke-width": g.started ? 0 : 1.2,
+      "stroke-dasharray": g.started ? null : "3 2"
+    }));
+    const far = x0 > w * 0.55;
+    const t = el("text", {
+      x: far ? Math.min(x1, w - 2) : x0, y: y + 3.5,
+      "text-anchor": far ? "end" : "start",
+      fill: css("--ink-3"), "font-size": 9
+    });
+    const room = Math.max(6, Math.floor((far ? Math.min(x1, w) : w - x0) / 5));
+    t.textContent = g.t.length > room ? g.t.slice(0, room - 1) + "…" : g.t;
+    svg.appendChild(t);
+  });
+  return svg;
+}
+
+function showPeek(ev, p) {
+  peek.innerHTML = "";
+  const h3 = document.createElement("h3"); h3.textContent = p.t;
+  const m = document.createElement("div"); m.className = "m";
+  peek.appendChild(h3); peek.appendChild(m);
+  if (p.r) {
+    const s = addDays(p.s, 0), e = addDays(p.e, 0);
+    const n = p.r.reduce((a, x) => a + x[4], 0);
+    m.textContent = human(s) + " - " + human(e) + ", " + dayw(n) + ", задач " + p.k.length +
+      (p.ed ? " | закрыт " + human(addDays(p.ed, 0)) : " | открыт") +
+      (p.h && p.h.length ? " | заголовков " + p.h.length : "");
+    peek.appendChild(peekChart(p));
+  } else {
+    m.textContent = "задач " + p.k.length;
+    const d = document.createElement("div");
+    d.className = "none";
+    d.textContent = "Ни одна задача не закрыта - подневного графика нет.";
+    peek.appendChild(d);
+  }
+  place(peek, ev);
+}
+
+let week = DATA.current;
+
+const BCAT = [
+  { id: "oo", name: "Открыта, создана раньше",     color: () => css("--op1"), up: 1 },
+  { id: "no", name: "Создана в этот день, открыта", color: () => css("--op2"), up: 1 },
+  { id: "oc", name: "Закрыта, создана раньше",     color: () => css("--cl1"), up: 0 },
+  { id: "nc", name: "Создана и закрыта в этот день", color: () => css("--cl2"), up: 0 }
+];
+
+function niceTicks(max, count) {
+  if (max <= 0) return [0];
+  const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw) || 10 * mag;
+  const top = Math.ceil(max / step) * step, out = [];
+  for (let v = 0; v <= top + step * 0.001; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+
+
+
+const BACK = 55;                                  // weeks behind the current one for the corridor
+
+// closures per day index for the whole history, every task with a stop date,
+// including those filed in no project and no area
+const CLOSED = DATA.burn.all;
+
+const DAY0 = addDays(DATA.burn.s, 0);
+const idxOf = iso => Math.round((addDays(iso, 0) - DAY0) / 86400000);
+
+// closures per weekday for the week starting at `startIso`, cut off at today
+function weekCloses(startIso) {
+  const lo = idxOf(startIso), today = idxOf(DATA.today);
+  const days = Math.min(7, today - lo + 1);
+  if (days <= 0) return [];
+  const out = [];
+  for (let i = 0; i < days; i++) out.push(CLOSED[lo + i] || 0);
+  return out;
+}
+
+const CAP = 20;                                   // last plotted count; everything above lands in CAP+
+
+
+function poisson(lam, k) {
+  let p = Math.exp(-lam);
+  for (let i = 1; i <= k; i++) p *= lam / i;
+  return p;
+}
+
+// Lanczos log-gamma, enough for the negative binomial with a non-integer r
+function lgamma(z) {
+  const g = [676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012,
+    9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
+  z -= 1;
+  let x = 0.99999999999980993;
+  for (let i = 0; i < 8; i++) x += g[i] / (z + i + 1);
+  const t = z + 7.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+
+// negative binomial fitted by moments: variance = mean + mean^2 / r
+function negbin(mean, vari, k) {
+  if (vari <= mean) return poisson(mean, k);
+  const r = mean * mean / (vari - mean), p = r / (r + mean);
+  return Math.exp(lgamma(k + r) - lgamma(r) - lgamma(k + 1) + r * Math.log(p) + k * Math.log(1 - p));
+}
+
+// one density strip per weekday: darker means a more likely number of closures,
+// the tick is what this week actually did
+function drawDays() {
+  const node = document.getElementById("days");
+  const idx = DATA.weeks.indexOf(week);
+  const weeks = [];
+  for (let k = 1; k <= BACK; k++) {
+    const i = idx - k;
+    if (i < 0) continue;
+    const v = weekCloses(DATA.weeks[i]);
+    if (v.length === 7) weeks.push(v);
+  }
+  const cur = weekCloses(week);
+  if (weeks.length < 5) {
+    node.innerHTML = '<div class="empty">Недостаточно завершённых недель.</div>';
+    document.getElementById("pcap").textContent = "";
+    return;
+  }
+
+  const names = ["пн","вт","ср","чт","пт","сб","вс"];
+  const stats = names.map((_, d) => {
+    const v = weeks.map(w => w[d]);
+    const m = v.reduce((a, x) => a + x, 0) / v.length;
+    const va = v.reduce((a, x) => a + (x - m) ** 2, 0) / (v.length - 1);
+    const hist = new Array(CAP + 2).fill(0);
+    for (const x of v) hist[Math.min(x, CAP + 1)]++;
+    const p = [];
+    let acc = 0;
+    for (let k = 0; k <= CAP; k++) { const q = negbin(m, va, k); acc += q; p.push(q); }
+    p.push(Math.max(0, 1 - acc));
+    // most likely single count; the last cell is a tail total, not a value
+    const body = p.slice(0, CAP + 1);
+    return { m, va, hist, p, pmax: Math.max(...p), mode: body.indexOf(Math.max(...body)) };
+  });
+
+  const W = Math.max(300, node.clientWidth || 900);
+  const padL = 34, padR = 12, padT = 10, labH = 26;
+  const rows = CAP + 2, cellH = 15, ih = rows * cellH;
+  const H = padT + ih + labH;
+  const colW = Math.max(30, Math.min(96, (W - padL - padR) / 7));
+  const sw = Math.max(14, colW - 12);
+  const X = d => padL + d * colW;
+  const Y = k => padT + ih - (k + 1) * cellH;         // count grows upward
+
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  for (let k = 0; k <= CAP + 1; k++) {
+    if (k % 5 && k !== CAP + 1) continue;
+    const t = el("text", { class: "val", x: padL - 8, y: Y(k) + cellH / 2 + 4, "text-anchor": "end" });
+    t.textContent = k === CAP + 1 ? (CAP + 1) + "+" : k;
+    svg.appendChild(t);
+  }
+
+  // the weekend is boxed rather than tinted, so the cells keep their own ground
+  svg.appendChild(el("rect", {
+    x: X(5) + 0.5, y: padT - 4.5, width: colW * 2 - 1, height: ih + 26, rx: 5,
+    fill: "none", stroke: css("--border"), "stroke-width": 1
+  }));
+
+  stats.forEach((st, d) => {
+    const hereK = cur[d] === undefined ? -1 : Math.min(cur[d], CAP + 1);
+    for (let k = 0; k <= CAP + 1; k++) {
+      const isHere = k === hereK;
+      svg.appendChild(el("rect", {
+        x: X(d) + 6, y: Y(k), width: sw, height: cellH - 1, rx: 2,
+        fill: isHere ? "#faf1e8" : css("--cl1"),
+        opacity: isHere ? 1 : 0.05 + 0.95 * (st.p[k] / st.pmax)
+      }));
+    }
+    const t = el("text", { class: "val", x: X(d) + 6 + sw / 2, y: padT + ih + 17, "text-anchor": "middle" });
+    t.textContent = names[d]; svg.appendChild(t);
+
+    if (hereK >= 0) {
+      const lb = el("text", { x: X(d) + 6 + sw / 2, y: Y(hereK) + cellH / 2 + 3.5, "text-anchor": "middle",
+        "font-size": 10, "font-weight": 600, fill: "#3a1210", "pointer-events": "none" });
+      lb.textContent = cur[d]; svg.appendChild(lb);
+    }
+
+    const hit = el("rect", { x: X(d), y: padT, width: colW, height: ih, fill: "transparent" });
+    hit.addEventListener("mousemove", ev => {
+      const b = svg.getBoundingClientRect();
+      const yy = (ev.clientY - b.top) * (H / b.height);
+      const k = Math.max(0, Math.min(CAP + 1, Math.floor((padT + ih - yy) / cellH)));
+      showTip(ev, ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"][d] +
+        ", " + (k > CAP ? (CAP + 1) + " и больше" : k + " закрытий"), [
+        { c: css("--cl1"), k: "Вероятность по модели", v: (st.p[k] * 100).toFixed(1) + "%" },
+        { k: "Недель было столько", v: st.hist[k] },
+        { k: "Мода по модели", v: st.mode },
+        { k: "Эта неделя", v: cur[d] === undefined ? "-" : cur[d], b: true }
+      ]);
+    });
+    hit.addEventListener("mouseleave", hideTip);
+    svg.appendChild(hit);
+  });
+
+  node.innerHTML = ""; node.appendChild(svg);
+
+  const ratios = stats.map(s => s.va / s.m);
+  document.getElementById("pcap").textContent =
+    "Полоска на день недели: чем темнее, тем вероятнее столько закрытий. Плотность - отрицательное биномиальное " +
+    "по " + weeks.length + " предыдущим неделям, светлая ячейка с числом - эта неделя. Учтены все закрытия, включая задачи вне " +
+    "проектов и областей. Отношение дисперсии к среднему от " +
+    Math.min(...ratios).toFixed(1) + " до " + Math.max(...ratios).toFixed(1) +
+    ", у Пуассона было бы 1 - поэтому взято отрицательное биномиальное.";
+}
+
+function drawBurn() {
+  const b0 = DATA.burn.s;
+  const lo = Math.round((addDays(week, 0) - addDays(b0, 0)) / 86400000);
+  const endIso = [isoOf(addDays(week, 6)), DATA.today].sort()[0];
+  const endIdx = Math.round((addDays(endIso, 0) - addDays(b0, 0)) / 86400000);
+  const n = endIdx - lo + 1;
+  const node = document.getElementById("burn");
+
+  // above: added this week and still open at the end of the day
+  // below: closed on the day; light means it came from this week's own intake,
+  // so the light part mirrors exactly what left the upper stack
+  const openOld = new Array(n).fill(0), openNew = new Array(n).fill(0);
+  const doneOld = new Array(n).fill(0), doneNew = new Array(n).fill(0);
+  let addedWeek = 0;
+  for (const [c, x] of DATA.burn.k) {
+    if (c > endIdx) break;
+    if (c >= lo) {
+      addedWeek++;
+      for (let i = c; i <= endIdx; i++) {
+        if (x !== null && x <= i) break;
+        (i === c ? openNew : openOld)[i - lo]++;
+      }
+    }
+    if (x !== null && x >= lo && x <= endIdx) (c >= lo ? doneNew : doneOld)[x - lo]++;
+  }
+
+  const upTot = openOld.map((v, d) => v + openNew[d]);
+  const dnTot = doneOld.map((v, d) => v + doneNew[d]);
+  const maxUp = Math.max(1, ...upTot), maxDn = Math.max(1, ...dnTot);
+
+  const W = Math.max(300, node.clientWidth || 900);
+  const padL = 44, padR = 12, padT = 14, labH = 28;
+  const iw = W - padL - padR;
+  const unit = Math.min(210 / maxUp, 210 / maxDn);       // one task, same height both ways
+  const upH = maxUp * unit, dnH = maxDn * unit;
+  const base = padT + upH, H = base + dnH + labH;
+  const step = iw / n, bw = Math.min(78, step - 16);
+
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  const mark = (v, y) => {
+    svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: y, y2: y,
+      stroke: css("--grid-b"), "stroke-width": 1 }));
+    const lb = el("text", { class: "val", x: padL - 8, y: y + 4, "text-anchor": "end" });
+    lb.textContent = v; svg.appendChild(lb);
+  };
+  niceTicks(maxUp, 3).forEach(t => t && mark(t, base - t * unit));
+  niceTicks(maxDn, 3).forEach(t => t && mark(t, base + t * unit));
+
+  for (let d = 0; d < n; d++) {
+    const x = padL + d * step + (step - bw) / 2;
+    const oo = openOld[d], on = openNew[d], co = doneOld[d], cn = doneNew[d];
+    if (oo) svg.appendChild(el("path", { d: barTop(x, base - oo * unit, bw, oo * unit, on ? 0 : 3), fill: css("--op1") }));
+    if (on) svg.appendChild(el("path", { d: barTop(x, base - (oo + on) * unit, bw, on * unit - (oo ? 1 : 0), 3), fill: css("--op2") }));
+    if (co) svg.appendChild(el("path", { d: barBot(x, base + 1, bw, co * unit, cn ? 0 : 3), fill: css("--cl1") }));
+    if (cn) svg.appendChild(el("path", { d: barBot(x, base + 1 + co * unit + (co ? 1 : 0), bw, cn * unit - (co ? 1 : 0), 3), fill: css("--cl2") }));
+
+    const day = addDays(b0, lo + d);
+    const lab = el("text", { class: "val", x: x + bw / 2, y: base + dnH + 18, "text-anchor": "middle" });
+    lab.textContent = ["вс","пн","вт","ср","чт","пт","сб"][day.getDay()] + " " + day.getDate();
+    svg.appendChild(lab);
+
+    const hit = el("rect", { x: padL + d * step, y: 0, width: step, height: base + dnH, fill: "transparent" });
+    hit.addEventListener("mousemove", ev => showTip(ev, human(day), [
+      { c: css("--op1"), k: "Открыто, добавлено раньше на неделе", v: oo },
+      { c: css("--op2"), k: "Открыто, добавлено в этот день", v: on },
+      { k: "Всего открыто из недельных", v: upTot[d], b: true },
+      { c: css("--cl1"), k: "Закрыто, создано до недели", v: co, top: true },
+      { c: css("--cl2"), k: "Закрыто из добавленных на неделе", v: cn },
+      { k: "Всего закрыто за день", v: dnTot[d], b: true }
+    ]));
+    hit.addEventListener("mouseleave", hideTip);
+    svg.appendChild(hit);
+  }
+
+  svg.appendChild(el("line", { x1: padL - 4, y1: base + .5, x2: W - padR, y2: base + .5,
+    stroke: css("--line"), "stroke-width": 1 }));
+  node.innerHTML = ""; node.appendChild(svg);
+
+  document.getElementById("bcap").textContent =
+    "Столбец на день. Выше линии - добавленные на этой неделе и ещё не закрытые, ниже - закрытые в этот день. " +
+    "Светлый тон сверху - созданные в этот день, снизу - закрытые из добавленных на этой неделе. За неделю добавлено " + addedWeek +
+    ", закрыто " + dnTot.reduce((a, v) => a + v, 0) +
+    ", из добавленных осталось открытыми " + upTot[n - 1] + ".";
+}
+
+
+function draw() {
+  const ws = week, sun = isoOf(addDays(week, 6));
+  let ps = DATA.projects
+    .filter(p => activeIn(p, ws, sun))
+    .filter(p => p.sd !== 2)                      // Someday projects stay out
+    .map(p => ({ p, c: counts(p, ws, sun) }))
+    .filter(x => x.c.co + x.c.cn + x.c.oo + x.c.on > 0);
+
+  // most open tasks first, ties by name
+  ps.sort((a, b) => (b.c.oo + b.c.on) - (a.c.oo + a.c.on) || a.p.t.localeCompare(b.p.t));
+
+
+  document.getElementById("wlabel").textContent = wlabel(week);
+  document.getElementById("wsel").value = week;
+  document.getElementById("next").disabled = week >= DATA.current;
+  document.getElementById("today").disabled = week === DATA.current;
+  document.getElementById("prev").disabled = week <= DATA.weeks[0];
+
+  const node = document.getElementById("chart");
+  if (!ps.length) {
+    node.innerHTML = '<div class="empty">На этой неделе активных проектов не было.</div>';
+    drawBurn();
+        drawDays();
+    return;
+  }
+
+  const maxR = Math.max(1, ...ps.map(x => x.c.co + x.c.cn));
+  const maxL = Math.max(1, ...ps.map(x => x.c.oo + x.c.on));
+  const avail0 = node.clientWidth || 900;
+  const narrow = avail0 < 620;
+  const labW = narrow ? 112 : 196, padR = narrow ? 26 : 44;
+  const avail = Math.max(160, avail0 - labW - padR);
+  const unit = Math.max(3, Math.min(22, avail / (maxR + maxL)));
+  const rowH = 26, barH = 15;
+  const zeroX = labW + maxL * unit;
+  const W = Math.max(300, labW + (maxL + maxR) * unit + padR);
+  const H = ps.length * rowH + 10;
+
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  svg.appendChild(el("line", { x1: zeroX + .5, y1: 2, x2: zeroX + .5, y2: H - 8,
+    stroke: css("--line"), "stroke-width": 1 }));
+
+  ps.forEach((x, i) => {
+    const y = 4 + i * rowH, yb = y + (rowH - barH) / 2;
+    let xr = zeroX + 1;
+    for (const cat of CAT.filter(c => c.right)) {
+      const n = x.c[cat.id]; if (!n) continue;
+      svg.appendChild(el("path", { d: barR(xr, yb, n * unit - 1, barH, 3), fill: cat.color() }));
+      xr += n * unit;
+    }
+    let xl = zeroX;
+    for (const cat of CAT.filter(c => !c.right)) {
+      const n = x.c[cat.id]; if (!n) continue;
+      xl -= n * unit;
+      svg.appendChild(el("path", { d: barL(xl + 1, yb, n * unit - 1, barH, 3), fill: cat.color() }));
+    }
+    if (x.c.co + x.c.cn) {
+      const t = el("text", { class: "val", x: xr + 5, y: yb + barH - 3 });
+      t.textContent = x.c.co + x.c.cn; svg.appendChild(t);
+    }
+    if (x.c.oo + x.c.on) {
+      const t = el("text", { class: "val", x: xl - 5, y: yb + barH - 3, "text-anchor": "end" });
+      t.textContent = x.c.oo + x.c.on; svg.appendChild(t);
+    }
+
+    const st = pstate(x.p, ws, sun);
+    if (STATE[st].mark) {
+      svg.appendChild(el("rect", {
+        x: labW - 20, y: yb + 4, width: 8, height: 8, rx: 2,
+        fill: STATE[st].mark === "solid" ? css("--cl1") : "none",
+        stroke: STATE[st].mark === "solid" ? "none" : css("--ink-3"),
+        "stroke-width": 1.4
+      }));
+    }
+    const lab = el("text", { class: "rowlab", x: 4, y: yb + barH - 3 });
+    const room = narrow ? 15 : 26;
+    lab.textContent = x.p.t.length > room ? x.p.t.slice(0, room - 1) + "…" : x.p.t;
+    lab.addEventListener("mouseenter", ev => showPeek(ev, x.p));
+    lab.addEventListener("mouseleave", hidePeek);
+    svg.appendChild(lab);
+
+    const hit = el("rect", { x: labW, y: y, width: W - labW, height: rowH, fill: "transparent" });
+    hit.addEventListener("mousemove", ev => showTip(ev, x.p.t,
+      CAT.map(c => ({ c: c.color(), k: c.name, v: x.c[c.id] }))
+        .concat([{ k: "Проект", v: STATE[st].n + (x.p.ed ? ", " + human(addDays(x.p.ed, 0)) : "") }])));
+    hit.addEventListener("mouseleave", hideTip);
+    svg.appendChild(hit);
+  });
+
+  node.innerHTML = ""; node.appendChild(svg);
+  drawBurn();
+  drawDays();
+}
+
+const wsel = document.getElementById("wsel");
+wsel.innerHTML = DATA.weeks.slice().reverse().map(w => `<option value="${w}">${wlabel(w)}</option>`).join("");
+document.getElementById("prev").onclick = () => {
+  const i = DATA.weeks.indexOf(week); if (i > 0) { week = DATA.weeks[i - 1]; draw(); }
+};
+document.getElementById("next").onclick = () => {
+  const i = DATA.weeks.indexOf(week); if (i < DATA.weeks.length - 1) { week = DATA.weeks[i + 1]; draw(); }
+};
+wsel.onchange = () => { week = wsel.value; draw(); };
+document.getElementById("today").onclick = () => { week = DATA.current; draw(); };
+addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTimeout(draw, 150); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+
+document.getElementById("foot").innerHTML =
+  "Проект попадает в неделю, если к её концу уже существовал и не был закрыт до её начала. Отменённые проекты " +
+  "в выгрузку не входят вовсе, их задачи при этом учитываются в диаграмме сжигания. Строки без единой задачи " +
+  "в неделе скрыты, порядок строк - по числу открытых задач.<br>" +
+  "Проекты в Someday не показаны. Это текущее состояние проекта: истории переходов в базе Things нет, поэтому " +
+  "для прошлых недель признак говорит о том, где проект лежит сейчас, а не где лежал тогда.<br>" +
+  "Неделя с понедельника по воскресенье. Область Templates исключена. " +
+  "Всего в выгрузке " + DATA.projects.length + " проектов, недель " + DATA.weeks.length + ".";
+
+draw();
+
+// The button exists only when the page is served by serve.py: a file:// page
+// has no way to run anything on the machine.
+const rbtn = document.getElementById("refresh"), rstat = document.getElementById("rstat");
+if (location.protocol === "http:" || location.protocol === "https:") {
+  rbtn.hidden = false;
+  rbtn.onclick = async () => {
+    rbtn.disabled = true;
+    rbtn.textContent = "Обновляю...";
+    rstat.textContent = "";
+    try {
+      const res = await fetch("/refresh", { method: "POST" });
+      const j = await res.json();
+      if (j.ok) { location.reload(); return; }
+      rstat.textContent = (j.out || "").split("\n").filter(Boolean).pop() || "не удалось";
+    } catch (e) {
+      rstat.textContent = String(e);
+    }
+    rbtn.textContent = "Обновить данные";
+    rbtn.disabled = false;
+  };
+}
+</script>
+</body>
+</html>
