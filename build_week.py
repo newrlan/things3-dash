@@ -177,12 +177,12 @@ for r in rows:
         continue
     # the task's own area, else the area its project sits in
     au = r["area"] or (proj_area.get(pu, "") if pu else "")
-    burn.append((c, sd2, areas.get(au, "") or "Без области"))
+    burn.append((c, sd2, areas.get(au, "") or "Без области", d(r["userModificationDate"])))
 
-burn_areas = sorted({a for *_, a in burn})
+burn_areas = sorted({a for _, _, a, _ in burn})
 aidx = {a: i for i, a in enumerate(burn_areas)}
-# every closure, including tasks filed in no project and no area
-closed_all = []
+# every closure and every last edit, including tasks filed in no project and no area
+closed_all, modified_all = [], []
 for r in rows:
     if r["type"] != "0":
         continue
@@ -192,9 +192,15 @@ for r in rows:
     sd2 = stop_of(r)
     if sd2:
         closed_all.append(sd2)
+    md = d(r["userModificationDate"])
+    if md:
+        modified_all.append(md)
 
-b0 = min(c for c, _, _ in burn)
-pairs = [[(c - b0).days, ((sd2 - b0).days if sd2 else None), aidx[a]] for c, sd2, a in burn]
+b0 = min(c for c, _, _, _ in burn)
+# [created, closed, area, last edit] as day offsets from b0. Things keeps only the
+# date of the latest edit, so an older week loses every task edited again since.
+pairs = [[(c - b0).days, ((sd2 - b0).days if sd2 else None), aidx[a], ((md - b0).days if md else None)]
+         for c, sd2, a, md in burn]
 pairs.sort(key=lambda x: (x[0], x[1] if x[1] is not None else 1 << 30))
 
 span_all = (TODAY - b0).days + 1
@@ -203,9 +209,15 @@ for sd2 in closed_all:
     i = (sd2 - b0).days
     if 0 <= i < span_all:
         all_by_day[i] += 1
+mod_by_day = [0] * span_all
+for md in modified_all:
+    i = (md - b0).days
+    if 0 <= i < span_all:
+        mod_by_day[i] += 1
 
 payload = {"projects": projects, "weeks": weeks, "current": wstart.isoformat(), "today": TODAY.isoformat(),
-           "burn": {"s": b0.isoformat(), "k": pairs, "areas": burn_areas, "all": all_by_day}}
+           "burn": {"s": b0.isoformat(), "k": pairs, "areas": burn_areas, "all": all_by_day,
+                    "mod": mod_by_day}}
 blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 tpl = open(os.path.join(SRC, "week.template.html"), encoding="utf-8").read()
 assert "/*__DATA__*/" in tpl, "template lost its data placeholder"
@@ -222,7 +234,7 @@ print("заголовков:", sum(len(p.get("h", [])) for p in projects),
       "| начатых:", sum(1 for p in projects for h in p.get("h", []) if h["started"]))
 print("сжигание: задач", len(burn), "| пар", len(pairs), "| с", b0.isoformat())
 print("все закрытия, включая задачи вне проектов и областей:", sum(all_by_day),
-      "| только с проектом или областью:", sum(1 for _, x, _ in pairs if x is not None))
+      "| только с проектом или областью:", sum(1 for _, x, _, _ in pairs if x is not None))
 import collections as _c
-for a, n in _c.Counter(a for *_, a in burn).most_common():
+for a, n in _c.Counter(a for _, _, a, _ in burn).most_common():
     print(f"   {a:<16}{n}")

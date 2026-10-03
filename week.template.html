@@ -59,10 +59,14 @@
   .week { font-weight:600; font-size:14px; min-width:186px; text-align:center; }
 
 
-  .bhd { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:2px; }
+  .bhd { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:12px; }
   .bhd h2 { font-size:15px; font-weight:620; margin:0; }
   .bhd label { font-size:12px; color:var(--ink-2); display:flex; align-items:center; gap:6px; }
-  .cap { font-size:12px; color:var(--ink-2); margin:0 0 14px; }
+  /* the weekday chart keeps its full size: 7 columns of 96px plus its axis
+     (718px) and the card padding; the wheel takes what is left */
+  .pair { display:grid; grid-template-columns:760px minmax(0, 1fr); gap:16px; margin-bottom:16px; }
+  .pair > .card { margin-bottom:0; min-width:0; }
+  @media (max-width: 1160px) { .pair { grid-template-columns:minmax(0, 1fr); } }
   .card { background:var(--card); border:1px solid var(--border); border-radius:10px;
     padding:18px 20px 14px; margin-bottom:16px; }
   .chart { width:100%; overflow-x:auto; }
@@ -108,17 +112,22 @@
   <label>Неделя <select id="wsel"></select></label>
 </div>
 
+<div class="pair">
 <div class="card">
   <div class="bhd"><h2>Распределение закрытий по дням недели</h2></div>
-  <p class="cap" id="pcap"></p>
   <div class="chart" id="days"></div>
+</div>
+
+<div class="card">
+  <div class="bhd"><h2>Баланс по областям</h2></div>
+  <div class="chart" id="areas"></div>
+</div>
 </div>
 
 <div class="card">
   <div class="bhd">
     <h2>Сжигание задач за неделю</h2>
   </div>
-  <p class="cap" id="bcap"></p>
   <div class="chart" id="burn"></div>
 </div>
 
@@ -370,7 +379,6 @@ function drawDays() {
   const cur = weekCloses(week);
   if (weeks.length < 5) {
     node.innerHTML = '<div class="empty">Недостаточно завершённых недель.</div>';
-    document.getElementById("pcap").textContent = "";
     return;
   }
 
@@ -450,14 +458,6 @@ function drawDays() {
   });
 
   node.innerHTML = ""; node.appendChild(svg);
-
-  const ratios = stats.map(s => s.va / s.m);
-  document.getElementById("pcap").textContent =
-    "Полоска на день недели: чем темнее, тем вероятнее столько закрытий. Плотность - отрицательное биномиальное " +
-    "по " + weeks.length + " предыдущим неделям, светлая ячейка с числом - эта неделя. Учтены все закрытия, включая задачи вне " +
-    "проектов и областей. Отношение дисперсии к среднему от " +
-    Math.min(...ratios).toFixed(1) + " до " + Math.max(...ratios).toFixed(1) +
-    ", у Пуассона было бы 1 - поэтому взято отрицательное биномиальное.";
 }
 
 function drawBurn() {
@@ -473,11 +473,9 @@ function drawBurn() {
   // so the light part mirrors exactly what left the upper stack
   const openOld = new Array(n).fill(0), openNew = new Array(n).fill(0);
   const doneOld = new Array(n).fill(0), doneNew = new Array(n).fill(0);
-  let addedWeek = 0;
   for (const [c, x] of DATA.burn.k) {
     if (c > endIdx) break;
     if (c >= lo) {
-      addedWeek++;
       for (let i = c; i <= endIdx; i++) {
         if (x !== null && x <= i) break;
         (i === c ? openNew : openOld)[i - lo]++;
@@ -537,12 +535,133 @@ function drawBurn() {
   svg.appendChild(el("line", { x1: padL - 4, y1: base + .5, x2: W - padR, y2: base + .5,
     stroke: css("--line"), "stroke-width": 1 }));
   node.innerHTML = ""; node.appendChild(svg);
+}
 
-  document.getElementById("bcap").textContent =
-    "Столбец на день. Выше линии - добавленные на этой неделе и ещё не закрытые, ниже - закрытые в этот день. " +
-    "Светлый тон сверху - созданные в этот день, снизу - закрытые из добавленных на этой неделе. За неделю добавлено " + addedWeek +
-    ", закрыто " + dnTot.reduce((a, v) => a + v, 0) +
-    ", из добавленных осталось открытыми " + upTot[n - 1] + ".";
+// balance wheel: one spoke per area, distance from the centre is the number of
+// tasks closed in the area this week. Spokes keep a fixed (alphabetical) order,
+// so the shape of different weeks can be compared.
+function drawAreas() {
+  const node = document.getElementById("areas");
+  const names = DATA.burn.areas.slice();
+  let noArea = names.indexOf("Без области");
+  if (noArea < 0) noArea = names.push("Без области") - 1;
+  const n = names.length;
+
+  // closures and last edits per area for the week that starts `back` weeks
+  // before the shown one. Things stores only the latest edit of a task, so for
+  // past weeks the edit count misses tasks edited again later.
+  const closedIn = back => {
+    const lo = idxOf(week) - 7 * back;
+    const hi = Math.min(lo + 6, idxOf(DATA.today));
+    const out = new Array(n).fill(0), mod = new Array(n).fill(0);
+    for (const [c, x, a, m] of DATA.burn.k) {
+      if (c > hi) break;
+      if (x !== null && x >= lo && x <= hi) out[a]++;
+      if (m !== null && m >= lo && m <= hi) mod[a]++;
+    }
+    // "Без области" also takes the tasks with neither a project nor an area:
+    // they are not in DATA.burn.k, so they are the rest of the all-tasks totals
+    let all = 0, allMod = 0;
+    for (let i = lo; i <= hi; i++) { all += CLOSED[i] || 0; allMod += DATA.burn.mod[i] || 0; }
+    out[noArea] += all - out.reduce((s, v) => s + v, 0);
+    mod[noArea] += allMod - mod.reduce((s, v) => s + v, 0);
+    return { counts: out, total: all, mod };
+  };
+  const { counts: byArea, total } = closedIn(0);
+
+  if (!total) {
+    node.innerHTML = '<div class="empty">На этой неделе ничего не закрыто.</div>';
+    return;
+  }
+
+  const W = Math.max(260, node.clientWidth || 900);
+  const ang = i => -Math.PI / 2 + i * 2 * Math.PI / n;
+  const svg = el("svg", { width: W, height: 100, viewBox: `0 0 ${W} 100` });
+  const back = el("g"), front = el("g");
+  svg.appendChild(back); svg.appendChild(front);
+  node.innerHTML = ""; node.appendChild(svg);
+
+  // labels first: their measured width decides how much room the side spokes
+  // need, and so the radius
+  const labs = names.map(name => {
+    const lab = el("text", { class: "rowlab", "font-size": 12 });
+    lab.textContent = name; front.appendChild(lab);
+    return { lab };
+  });
+  // a label sits beside its spoke only when the spoke is near horizontal;
+  // otherwise it is centred over (or under) the spoke end, which needs half
+  // the width and lets the wheel grow in a narrow card
+  const kind = i => {
+    const c = Math.cos(ang(i)), s = Math.sin(ang(i));
+    return Math.abs(c) < 0.2 ? "vert" : (Math.abs(s) < 0.3 ? "side" : "diag");
+  };
+  const gap = 10, lineH = 14;
+  let R = 170;
+  labs.forEach((l, i) => {
+    const c = Math.abs(Math.cos(ang(i))), w = l.lab.getBBox().width, k = kind(i);
+    if (k === "vert") return;
+    const need = k === "side" ? w : w / 2;
+    R = Math.min(R, (W / 2 - 4 - need) / c - gap);
+  });
+  R = Math.max(40, R);
+  const H = 2 * (R + gap + lineH + 6), cx = W / 2, cy = H / 2;
+  svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+  const ticks = niceTicks(Math.max(...byArea), 4);
+  const top = ticks[ticks.length - 1] || 1;
+  const pt = (i, v) => [cx + Math.cos(ang(i)) * R * v / top, cy + Math.sin(ang(i)) * R * v / top];
+
+  // rings at the tick values, drawn as polygons to match the spokes
+  ticks.forEach(t => {
+    if (!t) return;
+    back.appendChild(el("polygon", {
+      points: names.map((_, i) => pt(i, t).join(",")).join(" "),
+      fill: "none", stroke: css("--grid-b"), "stroke-width": 1
+    }));
+    const [, y] = pt(0, t);
+    // scale values stay faint, so they do not read as counts of the top spoke
+    const lb = el("text", { class: "val", x: cx + 4, y: y + 11, "font-size": 9, "fill-opacity": 0.55 });
+    lb.textContent = t; back.appendChild(lb);
+  });
+  names.forEach((_, i) => {
+    const [x, y] = pt(i, top);
+    back.appendChild(el("line", { x1: cx, y1: cy, x2: x, y2: y, stroke: css("--grid-b"), "stroke-width": 1 }));
+  });
+
+  const shape = names.map((_, i) => pt(i, byArea[i]));
+  back.appendChild(el("polygon", {
+    points: shape.map(p => p.join(",")).join(" "),
+    fill: css("--cl1"), "fill-opacity": 0.16, stroke: css("--cl1"), "stroke-width": 2, "stroke-linejoin": "round"
+  }));
+
+  names.forEach((name, i) => {
+    const [x, y] = shape[i];
+    back.appendChild(el("circle", { cx: x, cy: y, r: 4, fill: css("--cl1"), stroke: css("--card"), "stroke-width": 2 }));
+
+    // label just outside the outer ring, anchored away from the centre
+    const c = Math.cos(ang(i)), s = Math.sin(ang(i));
+    const lx = cx + c * (R + gap), ly = cy + s * (R + gap);
+    const k = kind(i);
+    const anchor = k === "side" ? (c > 0 ? "start" : "end") : "middle";
+    // diagonal labels step further off the corner, clear of the outer ring
+    const y1 = k === "side" ? ly + 4
+      : (s < 0 ? ly - (k === "diag" ? 12 : 4) : ly + (k === "diag" ? 18 : 12));
+    const { lab } = labs[i];
+    lab.setAttribute("text-anchor", anchor);
+    lab.setAttribute("x", lx); lab.setAttribute("y", y1);
+
+    const tipRows = [
+      { c: css("--cl1"), k: "Закрыто за неделю", v: byArea[i], b: true },
+      { k: "Доля от всех закрытых", v: Math.round(byArea[i] / total * 100) + "%" }
+    ];
+    const hit = el("circle", { cx: x, cy: y, r: 14, fill: "transparent" });
+    front.appendChild(hit);
+    for (const target of [lab, hit]) {
+      target.addEventListener("mousemove", ev => showTip(ev, name, tipRows));
+      target.addEventListener("mouseleave", hideTip);
+    }
+  });
+
 }
 
 
@@ -568,7 +687,8 @@ function draw() {
   if (!ps.length) {
     node.innerHTML = '<div class="empty">На этой неделе активных проектов не было.</div>';
     drawBurn();
-        drawDays();
+    drawAreas();
+    drawDays();
     return;
   }
 
@@ -637,6 +757,7 @@ function draw() {
 
   node.innerHTML = ""; node.appendChild(svg);
   drawBurn();
+  drawAreas();
   drawDays();
 }
 
