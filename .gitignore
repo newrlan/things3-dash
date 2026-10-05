@@ -1,8 +1,11 @@
-# Generated on every refresh: export.sh -> CSV, build_week.py -> week.html.
+# Generated on every refresh by build_week.py.
 # The data comes from the personal Things database, keep it out of the repository.
-tasks.csv
-areas.csv
 week.html
+week.html.tmp
+
+# Weekly history kept by build_week.py: personal data, and the only copy of it
+history.sqlite
+history.sqlite-journal
 
 # Logs of serve.py (manual run via nohup and the launchd agent)
 nohup.out
