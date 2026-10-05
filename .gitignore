@@ -1,7 +1,5 @@
-# Generated on every refresh: export.sh -> CSV, build_week.py -> week.html.
+# Generated on every refresh by build_week.py.
 # The data comes from the personal Things database, keep it out of the repository.
-tasks.csv
-areas.csv
 week.html
 week.html.tmp
 

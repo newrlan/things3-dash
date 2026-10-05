@@ -91,7 +91,6 @@
   .legend i { width:10px; height:10px; border-radius:2px; }
   .legend b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
   .empty { color:var(--ink-3); font-size:13px; padding:20px 2px; }
-  footer { margin-top:24px; font-size:12px; color:var(--ink-3); line-height:1.7; }
 </style>
 </head>
 <body>
@@ -132,8 +131,6 @@
   <div class="bhd"><h2>Проекты недели</h2></div>
   <div class="chart" id="chart"></div>
 </div>
-
-<footer id="foot"></footer>
 </div>
 <div class="tip" id="tip"></div>
 
@@ -613,13 +610,6 @@ wsel.onchange = () => { week = wsel.value; draw(); };
 document.getElementById("today").onclick = () => { week = DATA.current; draw(); };
 addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTimeout(draw, 150); });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
-
-document.getElementById("foot").innerHTML =
-  "Проект попадает в неделю, если к её концу уже существовал и не был закрыт до её начала. Строки без единой задачи " +
-  "в неделе скрыты, порядок строк - по числу открытых задач. Отменённые проекты и проекты в Someday не показаны.<br>" +
-  "Отменённые задачи считаются закрытыми. Задача относится к последней известной области: своей или своего проекта.<br>" +
-  "Прошлые недели берутся из истории (history.sqlite) и не меняются, текущая неделя считается заново при каждом " +
-  "обновлении. Неделя с понедельника по воскресенье, недель в истории " + DATA.frozen + ".";
 
 draw();
 

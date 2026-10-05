@@ -1,7 +1,7 @@
-"""Builds week.html from the Things export and keeps the weekly history.
+"""Builds week.html from the Things database and keeps the weekly history.
 
 Steps:
-  1. read tasks.csv / areas.csv and refuse an export that looks broken;
+  1. read the Things database (read-only) and refuse an export that looks broken;
   2. update the reference tables of history.sqlite (areas, projects with their
      last known area);
   3. freeze every complete week that is not frozen yet;
@@ -11,16 +11,20 @@ Steps:
 The schema and its rules are described in docs/history-schema.md.
 """
 
-import csv
+import glob
 import json
 import os
 import sqlite3
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from urllib.parse import quote
 
 SRC = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(SRC, "history.sqlite")
+# Things keeps one directory per data set
+THINGS = os.path.expanduser("~/Library/Group Containers/JLMPQHK86H.com.culturedcode.ThingsMac/"
+                            "ThingsData-*/Things Database.thingsdatabase/main.sqlite")
 TODAY = date.today()
 RULES = 1                      # version of the counting rules, stored with every frozen week
 NO_AREA = ""                   # area uuid of "Без области"
@@ -127,23 +131,54 @@ def keep_area(now, prev, alive):
 
 # ---- 1. export --------------------------------------------------------------
 
-def read_export():
-    with open(os.path.join(SRC, "areas.csv"), encoding="utf-8") as f:
-        areas = {r["uuid"]: r["title"] for r in csv.DictReader(f)}
-    with open(os.path.join(SRC, "tasks.csv"), encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
+def read_things():
+    """Areas and the rows of TMTask, straight from the Things database.
+
+    Read-only: the database is opened with mode=ro, nothing is copied and nothing
+    is written into the Things container. Titles of to-dos are NOT read, only the
+    titles of projects and headings.
+    """
+    try:
+        found = glob.glob(THINGS)
+    except OSError as e:
+        sys.exit(f"нет доступа к базе Things: {e}")
+    if not found:
+        sys.exit(f"база Things не найдена или к ней нет доступа: {THINGS}")
+    path = max(found, key=os.path.getmtime)         # several data sets: the most recently modified
+    print("база Things:", path)
+    try:
+        con = sqlite3.connect(f"file:{quote(path)}?mode=ro", uri=True, timeout=30)
+        con.row_factory = sqlite3.Row
+        areas = {r["uuid"]: r["title"] for r in con.execute("SELECT uuid, title FROM TMArea")}
+        rows = [dict(r) for r in con.execute("""
+            SELECT uuid,
+                   type,            -- 0 = to-do, 1 = project, 2 = heading
+                   status,          -- 0 = open, 2 = canceled, 3 = completed
+                   creationDate,    -- unix time
+                   stopDate,        -- unix time, set when completed or canceled
+                   start,           -- 0 = Inbox, 1 = Anytime, 2 = Someday
+                   project,         -- uuid of the parent project
+                   heading,         -- uuid of the parent heading, when the item sits under one
+                   area,            -- uuid of the area
+                   CASE WHEN type IN (1, 2) THEN title ELSE '' END AS item_title
+            FROM TMTask
+            WHERE trashed = 0""")]
+        con.close()
+    except sqlite3.Error as e:
+        # a Things update that changes the schema shows up here, with the name of what is missing
+        sys.exit(f"не удалось прочитать базу Things: {e}")
     return areas, rows
 
 
 def check_export(con, todos):
     """Refuses an export that looks broken, then remembers its size for the next run."""
     if not todos:
-        sys.exit("в выгрузке нет задач, обновление прервано")
+        sys.exit("в базе Things нет задач, обновление прервано")
     row = con.execute("SELECT value FROM meta WHERE key = 'export_todos'").fetchone()
     prev = int(row[0]) if row else 0
     if prev and len(todos) < prev * MIN_KEEP:
         sys.exit(f"в выгрузке {len(todos)} задач, в прошлой было {prev}: "
-                 "похоже на сбой экспорта, обновление прервано")
+                 "похоже на сбой чтения базы, обновление прервано")
     con.execute("INSERT INTO meta (key, value) VALUES ('export_todos', ?) "
                 "ON CONFLICT (key) DO UPDATE SET value = excluded.value", (str(len(todos)),))
 
@@ -171,7 +206,7 @@ def update_projects(con, rows, alive):
     today = iso(TODAY)
     out, upserts = {}, []
     for r in rows:
-        if r["type"] != "1":
+        if r["type"] != 1:
             continue
         area = keep_area(r["area"], prev.get(r["uuid"]), alive)
         out[r["uuid"]] = (area, r)
@@ -201,9 +236,9 @@ def read_tasks(con, todos, heads):
         if not c:
             continue
         # a to-do under a heading belongs to the heading's project
-        pu = r["project"] or heads.get(r["heading"], {}).get("project", "")
+        pu = r["project"] or heads.get(r["heading"], {}).get("project") or ""
         area = r["area"] or project_area.get(pu, NO_AREA)
-        tasks.append({"c": c, "s": stop_of(r), "canceled": r["status"] == "2", "area": area, "project": pu})
+        tasks.append({"c": c, "s": stop_of(r), "canceled": r["status"] == 2, "area": area, "project": pu})
     return tasks
 
 
@@ -235,7 +270,7 @@ def project_weeks(tasks, projects):
     out = defaultdict(dict)
     for pu, ts in by_project.items():
         area, r = projects[pu]
-        pc, ps, status, someday = d(r["creationDate"]), d(r["stopDate"]), int(r["status"]), int(r["start"] == "2")
+        pc, ps, status, someday = d(r["creationDate"]), d(r["stopDate"]), int(r["status"]), int(r["start"] == 2)
         counts = defaultdict(lambda: [0] * 6)
         for t in ts:
             c, s = t["c"], t["s"]
@@ -344,9 +379,9 @@ def build_payload(con, flows, pweeks, alive):
 
 
 def main():
-    areas, rows = read_export()
-    todos = [r for r in rows if r["type"] == "0"]
-    heads = {r["uuid"]: r for r in rows if r["type"] == "2"}
+    areas, rows = read_things()
+    todos = [r for r in rows if r["type"] == 0]
+    heads = {r["uuid"]: r for r in rows if r["type"] == 2}
 
     con = sqlite3.connect(DB, isolation_level=None, timeout=30)
     con.execute("PRAGMA foreign_keys = ON")
@@ -380,7 +415,7 @@ def main():
     os.replace(out + ".tmp", out)                   # the server never sees a half-written page
 
     print("написан week.html")
-    print("задач в выгрузке:", len(todos), "| проектов:", len(projects), "| областей:", len(areas))
+    print("задач в базе Things:", len(todos), "| проектов:", len(projects), "| областей:", len(areas))
     print("недель в истории:", payload["frozen"], "| заморожено сейчас:", n,
           "| текущая неделя:", payload["current"])
 

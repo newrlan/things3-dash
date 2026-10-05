@@ -23,12 +23,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A task belongs to the last known area of itself or its project; tasks
   outside any area, including loose ones, count as "Без области".
 - `week.html` is written atomically.
+- `build_week.py` reads the Things database directly, read-only, instead of
+  going through CSV files.
 
 ### Removed
 
 - Weekly burn chart.
 - Per-project day-by-day history on hover in "Projects of the week".
 - Special handling of the `Templates` area.
+- `export.sh` and the intermediate `tasks.csv` and `areas.csv`.
+- The text block under "Projects of the week".
 
 ## [0.1.0] - 2026-09-27
 

@@ -38,7 +38,7 @@ history is filled from the current database. The schema and its rules are in
 ## Requirements
 
 - macOS with the Things 3 Mac app and its local database
-- `bash` and `sqlite3` (both ship with macOS)
+- `bash` (ships with macOS)
 - Python 3.7 or newer with SQLite 3.24 or newer, standard library only
 
 ## Install
@@ -59,14 +59,11 @@ No dependencies to install.
 open week.html
 ```
 
-`refresh.sh` runs two steps:
-
-1. `export.sh` reads the Things database and writes `tasks.csv` and `areas.csv`
-   next to the scripts.
-2. `build_week.py` updates `history.sqlite`, freezes the weeks that have ended
-   and builds `week.html` from `week.template.html`. It refuses an export with no
-   to-dos, or with less than half of the to-dos of the previous one, so that a
-   failed export never gets frozen into the history.
+`refresh.sh` runs `build_week.py`, which reads the Things database, updates
+`history.sqlite`, freezes the weeks that have ended and builds `week.html` from
+`week.template.html`. It refuses a read with no to-dos, or with less than half
+of the to-dos of the previous one, so that a failed read never gets frozen into
+the history.
 
 To see fresh data, run `./refresh.sh` again and reload the page.
 
@@ -88,18 +85,18 @@ is opened as a local file.
   `~/Library/Group Containers/JLMPQHK86H.com.culturedcode.ThingsMac/ThingsData-*/Things Database.thingsdatabase/main.sqlite`.
   If there are several `ThingsData-*` directories, the most recently modified
   one is used.
-- `sqlite3` opens it read-only (`-readonly`, `mode=ro`). Nothing is copied or
-  written into the Things container.
+- It is opened read-only (`mode=ro`). Nothing is copied or written into the
+  Things container, and no intermediate files are kept.
 - If macOS refuses access to the database, allow your terminal app access in
   System Settings > Privacy & Security.
 
 ## Privacy
 
-- To-do titles are not exported. Only project, heading and area titles leave
+- To-do titles are not read. Only project, heading and area titles leave
   the database; project and area titles are stored in `history.sqlite` and
   embedded in `week.html`.
-- `tasks.csv`, `areas.csv`, `week.html` and `history.sqlite` hold your personal
-  data and are listed in `.gitignore`. Do not publish them.
+- `week.html` and `history.sqlite` hold your personal data and are listed in
+  `.gitignore`. Do not publish them.
 - `history.sqlite` is the only copy of past weeks once Things has forgotten
   them: keep it in your backups.
 
@@ -122,21 +119,21 @@ is opened as a local file.
 ## Known limitations
 
 - Repeating to-dos are not filtered out.
-- The export relies on the Things database schema (`TMTask`, `TMArea`). A Things
-  update that changes the schema can break it; `export.sh` prints the `TMTask`
-  columns on every run to make such a change visible.
+- The build relies on the Things database schema (`TMTask`, `TMArea`). A Things
+  update that changes the schema can break it; `build_week.py` then stops with
+  the SQLite error naming the missing table or column, before anything is
+  written.
 - `serve.py` listens on `127.0.0.1` only, but `POST /refresh` has no protection
   against requests sent by other web pages open in the same browser, and the
-  server gives out every file in the project directory, including the CSV
-  exports and `history.sqlite`. Run it only while you need it.
+  server gives out every file in the project directory, including
+  `history.sqlite`. Run it only while you need it.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `export.sh` | Read-only export from the Things database into CSV |
-| `build_week.py` | Updates the history and builds `week.html` from it and the template |
+| `build_week.py` | Reads the Things database, updates the history and builds `week.html` from it and the template |
 | `week.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
-| `refresh.sh` | Runs the export and the build |
+| `refresh.sh` | Runs the build |
 | `serve.py` | Local http server with the refresh endpoint |
 | `docs/history-schema.md` | Schema and rules of `history.sqlite` |
