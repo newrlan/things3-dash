@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Year tab: the stock of open tasks through a year, against its level at the
+  start of the year. One column per week: it starts where the previous week
+  ended, sinks by what was closed and is as long as what was added; tasks
+  without an area are left out. Navigation by year.
+- Year tab: the names of the projects closed in each week, under the week's
+  column; hovering a name marks the weeks from the start of the project to its
+  closing.
+
 ## [0.3.1] - 2026-10-05
 
 ### Added

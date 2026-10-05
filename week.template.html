@@ -43,7 +43,9 @@
   }
   .top { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
   h1 { font-size:25px; font-weight:640; letter-spacing:-.02em; margin:0; }
-  .top button { margin-left:auto; }
+  .top #refresh { margin-left:auto; }
+  .tabs { display:flex; gap:4px; margin-left:8px; }
+  .tabs button.on { background:var(--card); border-color:var(--ink-3); font-weight:600; }
 
   .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
     background:var(--card); border:1px solid var(--border); border-radius:10px;
@@ -97,11 +99,16 @@
 <div class="wrap">
 
 <div class="top">
-  <h1>Неделя по проектам</h1>
+  <h1 id="title">Неделя по проектам</h1>
+  <div class="tabs">
+    <button data-tab="week">Неделя</button>
+    <button data-tab="year">Год</button>
+  </div>
   <span class="rstat" id="rstat"></span>
   <button id="refresh" hidden>Обновить данные</button>
 </div>
 
+<div id="tab-week">
 <div class="bar">
   <button id="prev">&larr;</button>
   <span class="week" id="wlabel"></span>
@@ -130,6 +137,22 @@
 <div class="card">
   <div class="bhd"><h2>Проекты недели</h2></div>
   <div class="chart" id="chart"></div>
+</div>
+</div>
+
+<div id="tab-year" hidden>
+<div class="bar">
+  <button id="yprev">&larr;</button>
+  <span class="week" id="ylabel"></span>
+  <button id="ynext">&rarr;</button>
+  <button id="ytoday">Текущий год</button>
+  <label>Год <select id="ysel"></select></label>
+</div>
+
+<div class="card">
+  <div class="bhd"><h2>Открытые задачи с начала года</h2></div>
+  <div class="chart" id="yflow"></div>
+</div>
 </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -190,6 +213,25 @@ function barL(x, y, w, h, r) {
   r = Math.min(r, h / 2, w);
   return `M${x+w},${y} L${x+r},${y} Q${x},${y} ${x},${y+r} L${x},${y+h-r} Q${x},${y+h} ${x+r},${y+h} L${x+w},${y+h} Z`;
 }
+// rounded top, flat bottom: a vertical bar segment that ends the stack
+function barT(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return `M${x},${y+h} L${x},${y+r} Q${x},${y} ${x+r},${y} L${x+w-r},${y} Q${x+w},${y} ${x+w},${y+r} L${x+w},${y+h} Z`;
+}
+function niceTicks(max, count) {
+  if (max <= 0) return [0];
+  const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw) || 10 * mag;
+  const top = Math.ceil(max / step) * step, out = [];
+  for (let v = 0; v <= top + step * 0.001; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+// the three parts of a week's flow, in the order of DATA.wk[week].f
+const FLOW = [
+  { color: () => css("--op2"), name: "Новые не закрытые задачи" },
+  { color: () => css("--cl2"), name: "Новые закрытые задачи" },
+  { color: () => css("--cl1"), name: "Старые закрытые задачи" }
+];
 let week = DATA.current;
 
 
@@ -474,13 +516,8 @@ function drawAreas() {
 // was added and already done, and what was done from earlier weeks
 function drawFlow() {
   const node = document.getElementById("flow");
-  const [newOpen, newDone, oldDone] = DATA.wk[week].f;
-  const segs = [
-    { n: newOpen, color: css("--op2"), name: "Новые не закрытые задачи" },
-    { n: newDone, color: css("--cl2"), name: "Новые закрытые задачи" },
-    { n: oldDone, color: css("--cl1"), name: "Старые закрытые задачи" }
-  ];
-  const sum = newOpen + newDone + oldDone;
+  const segs = FLOW.map((g, i) => ({ n: DATA.wk[week].f[i], color: g.color(), name: g.name }));
+  const sum = segs.reduce((a, g) => a + g.n, 0);
   if (!sum) {
     node.innerHTML = '<div class="empty">На этой неделе ничего не добавлено и не сделано.</div>';
     return;
@@ -617,6 +654,211 @@ function draw() {
 }
 
 const wsel = document.getElementById("wsel");
+
+// ---- year tab ---------------------------------------------------------------
+// a week belongs to the year of its Thursday (ISO week-numbering year)
+const isoOf = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const yearOf = ws => addDays(ws, 3).getFullYear();
+const YEARS = [...new Set(DATA.weeks.map(yearOf))];
+let year = yearOf(DATA.current);
+// every week of the year, with or without data: the columns keep their place
+function weeksOf(y) {
+  const jan4 = new Date(y, 0, 4), out = [];
+  let ws = isoOf(addDays(isoOf(jan4), -((jan4.getDay() + 6) % 7)));
+  for (; yearOf(ws) === y; ws = isoOf(addDays(ws, 7))) out.push(ws);
+  return out;
+}
+
+// one column per week. The level of open tasks at the start of the year is
+// zero. A column starts where the previous week ended, sinks by what was closed
+// in the week and is as long as what was added in it: its top is how far the
+// stock of open tasks is from where the year began. Tasks without an area are
+// left out. Under the columns are the projects closed in each week, hung on a
+// dashed line dropped from the week.
+const mondayOf = iso => isoOf(addDays(iso, -((addDays(iso, 0).getDay() + 6) % 7)));
+const CLOSED_IN = {};                             // {week start: [[title, closing date, status, start date]]}
+for (const p of DATA.pr) {
+  const ws = mondayOf(p[1]);
+  (CLOSED_IN[ws] = CLOSED_IN[ws] || []).push(p);
+}
+function drawYear() {
+  const node = document.getElementById("yflow");
+  document.getElementById("ylabel").textContent = year;
+  document.getElementById("ysel").value = year;
+  document.getElementById("yprev").disabled = year <= YEARS[0];
+  document.getElementById("ynext").disabled = year >= YEARS[YEARS.length - 1];
+  document.getElementById("ytoday").disabled = year === yearOf(DATA.current);
+
+  let added = 0, closed = 0;
+  const slots = weeksOf(year).map(ws => {
+    const g = DATA.wk[ws] ? DATA.wk[ws].g : null;
+    if (!g) return { ws, g };
+    added += g[0]; closed += g[1];
+    const prev = added - closed - g[0] + g[1];      // the level the previous week ended at
+    return { ws, g, added, closed, prev, top: added - closed, bottom: prev - g[1] };
+  });
+  if (!added && !closed) {
+    node.innerHTML = '<div class="empty">За этот год ничего не добавлено и не закрыто.</div>';
+    return;
+  }
+
+  const W = Math.max(520, node.clientWidth || 900);
+  const padL = 44, padR = 4, padT = 10, plotH = 340, padB = 22;
+  const H = padT + plotH + padB;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  const shown = slots.filter(x => x.g);
+  const lo = Math.min(0, ...shown.map(x => x.bottom)), hi = Math.max(0, ...shown.map(x => x.top));
+  const step = niceTicks(hi - lo, 6)[1] || 1;
+  const yMin = Math.floor(lo / step) * step, yMax = Math.ceil(hi / step) * step || step;
+  const Y = v => padT + (yMax - v) / (yMax - yMin) * plotH;
+  const slotW = (W - padL - padR) / slots.length, barW = Math.max(3, Math.min(22, slotW - 4));
+  const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
+
+  for (let t = yMin; t <= yMax + step * 0.001; t += step) {
+    const y = Math.round(Y(t)) + .5;
+    // the level of the start of the year is the dashed line
+    const line = el("line", { x1: padL, y1: y, x2: W - padR, y2: y,
+      stroke: css(t ? "--grid-b" : "--line"), "stroke-width": 1 });
+    if (!t) line.setAttribute("stroke-dasharray", "4 4");
+    svg.appendChild(line);
+    const lb = el("text", { class: "val", x: padL - 6, y: y + 3, "text-anchor": "end" });
+    lb.textContent = signed(t); svg.appendChild(lb);
+  }
+
+  // the dashed lines go under everything else; text gets a halo of card colour
+  // so a line passing behind it does not strike it through
+  const drops = el("g"), names = el("g");
+  svg.appendChild(drops);
+  const halo = { stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round" };
+
+  let month = -1;
+  slots.forEach((x, i) => {
+    const x0 = padL + i * slotW, bx = x0 + (slotW - barW) / 2;
+    // a month is named under the first week whose Thursday falls into it
+    const m = addDays(x.ws, 3).getMonth();
+    if (m !== month) {
+      month = m;
+      const lb = el("text", Object.assign({ class: "val", x: bx, y: H - 6 }, halo));
+      lb.textContent = MON[m]; svg.appendChild(lb);
+    }
+    if (!x.g) return;
+
+    // the part above the level of the previous week is lighter: the stock grew
+    const grew = x.top > x.prev, low = Math.min(x.top, x.prev);
+    if (low > x.bottom) {
+      const yt = Y(low), h = Math.max(1, Y(x.bottom) - yt);
+      svg.appendChild(grew ? el("rect", { x: bx, y: yt, width: barW, height: h, fill: css("--cl1") })
+                           : el("path", { d: barT(bx, yt, barW, h, 3), fill: css("--cl1") }));
+    }
+    if (grew) {
+      const gap = low > x.bottom ? 1 : 0, h = Math.max(1, Y(x.prev) - Y(x.top) - gap);
+      svg.appendChild(el("path", { d: barT(bx, Y(x.top), barW, h, 3), fill: css("--cl2") }));
+    }
+
+    const hit = el("rect", { x: x0, y: padT, width: slotW, height: plotH, fill: "transparent" });
+    hit.addEventListener("mousemove", ev => showTip(ev, wlabel(x.ws), [
+      { k: "Запас к началу года", v: signed(x.top), b: true },
+      { k: "Добавлено с начала года", v: x.added },
+      { k: "Закрыто с начала года", v: x.closed },
+      { k: "Добавлено за неделю", v: x.g[0], top: true },
+      { k: "Закрыто за неделю", v: x.g[1] }
+    ]));
+    hit.addEventListener("mouseleave", hideTip);
+    svg.appendChild(hit);
+  });
+
+  // projects closed in the week: each name takes the first row where it fits,
+  // completed ones first; the line of the week runs down to its last name
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = "500 11px " + getComputedStyle(document.body).fontFamily;
+  const rowsUsed = [], rowH = 15, top = H + 6;
+  const span = el("g", { "pointer-events": "none" });
+  let done = 0, dropped = 0;
+  slots.forEach((x, i) => {
+    const ps = (CLOSED_IN[x.ws] || []).slice().sort((a, b) => b[2] - a[2] || a[0].localeCompare(b[0]));
+    if (!ps.length) return;
+    const cx = Math.round(padL + i * slotW + slotW / 2) + .5;
+    let deepest = 0;
+    for (const [title, closed, st, started] of ps) {
+      st === 3 ? done++ : dropped++;
+      const text = title.length > 30 ? title.slice(0, 29) + "…" : title;
+      const w = ctx.measureText(text).width, left = cx + 5 + w > W - padR;
+      const a = left ? cx - 5 - w : cx + 5, b = a + w;
+      let r = 0;
+      while ((rowsUsed[r] || []).some(([p, q]) => a < q + 10 && b > p - 10)) r++;
+      (rowsUsed[r] = rowsUsed[r] || []).push([a, b]);
+      deepest = Math.max(deepest, r);
+      const lb = el("text", Object.assign({ x: left ? b : a, y: top + r * rowH + 11, "font-size": 11, "font-weight": 500,
+        "text-anchor": left ? "end" : "start", fill: css(st === 3 ? "--ink-2" : "--ink-3") }, halo));
+      lb.textContent = text;
+      // hovering a name shows the life of the project over the weeks: from the
+      // week of its start to the week it was closed in, cut at the edge of the year
+      lb.style.cursor = "default";
+      lb.addEventListener("mouseenter", () => {
+        const from = slots.findIndex(q => q.ws === mondayOf(started));
+        const xa = from < 0 ? padL : padL + from * slotW + slotW / 2, yl = padT + plotH;
+        span.appendChild(el("rect", { x: xa, y: padT, width: Math.max(2, cx - xa), height: plotH,
+          fill: css("--ink"), "fill-opacity": 0.06 }));
+        span.appendChild(el("line", { x1: xa, y1: yl, x2: cx, y2: yl, stroke: css("--ink"), "stroke-width": 3,
+          "stroke-linecap": from < 0 ? "butt" : "round" }));
+        for (const xx of from < 0 ? [cx] : [xa, cx])
+          span.appendChild(el("circle", { cx: xx, cy: yl, r: 4, fill: css("--ink"), stroke: css("--card"), "stroke-width": 2 }));
+      });
+      lb.addEventListener("mousemove", ev => showTip(ev, title, [
+        { k: st === 3 ? "Завершён" : "Отменён", v: human(addDays(closed, 0)), b: true },
+        { k: "Начат", v: human(addDays(started, 0)) },
+        { k: "Длительность", v: Math.round((addDays(closed, 0) - addDays(started, 0)) / 864e5) + " дн." }
+      ]));
+      lb.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; });
+      names.appendChild(lb);
+    }
+    drops.appendChild(el("line", { x1: cx, y1: x.g ? Y(x.bottom) + 2 : padT + plotH, x2: cx, y2: top + deepest * rowH + 13,
+      stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" }));
+  });
+  svg.appendChild(span);
+  svg.appendChild(names);
+  const H2 = rowsUsed.length ? top + rowsUsed.length * rowH + 4 : H;
+  svg.setAttribute("height", H2); svg.setAttribute("viewBox", `0 0 ${W} ${H2}`);
+  node.innerHTML = ""; node.appendChild(svg);
+
+  // what the lighter colour and the dashed line mean, then the totals of the year
+  const leg = document.createElement("div");
+  leg.className = "legend";
+  for (const [color, name, v] of [[css("--cl2"), "Выше предыдущей недели"], ["dash", "Уровень начала года"],
+                                  [null, "Добавлено", added], [null, "Закрыто", closed],
+                                  [null, "Запас к началу года", signed(added - closed)],
+                                  [null, "Проектов завершено", done], [null, "отменено (серым)", dropped]]) {
+    const it = document.createElement("span");
+    if (color) {
+      const sw = document.createElement("i");
+      if (color === "dash") sw.style.cssText = "width:16px; height:0; border-radius:0; border-top:1px dashed " + css("--line");
+      else sw.style.background = color;
+      it.appendChild(sw);
+    }
+    it.appendChild(document.createTextNode(v === undefined ? name : name + ": "));
+    if (v !== undefined) { const b = document.createElement("b"); b.textContent = v; it.appendChild(b); }
+    leg.appendChild(it);
+  }
+  node.appendChild(leg);
+}
+
+// ---- tabs -------------------------------------------------------------------
+// the tab lives in the address (#year), so it survives the reload after a refresh
+let tab = location.hash === "#year" ? "year" : "week";
+const render = () => tab === "year" ? drawYear() : draw();
+function showTab() {
+  document.getElementById("tab-week").hidden = tab !== "week";
+  document.getElementById("tab-year").hidden = tab !== "year";
+  document.getElementById("title").textContent = tab === "year" ? "Год по неделям" : "Неделя по проектам";
+  for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
+  render();
+}
+for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => {
+  tab = b.dataset.tab;
+  history.replaceState(null, "", tab === "year" ? "#year" : location.pathname + location.search);
+  showTab();
+};
+
 wsel.innerHTML = DATA.weeks.slice().reverse().map(w => `<option value="${w}">${wlabel(w)}</option>`).join("");
 document.getElementById("prev").onclick = () => {
   const i = DATA.weeks.indexOf(week); if (i > 0) { week = DATA.weeks[i - 1]; draw(); }
@@ -626,10 +868,16 @@ document.getElementById("next").onclick = () => {
 };
 wsel.onchange = () => { week = wsel.value; draw(); };
 document.getElementById("today").onclick = () => { week = DATA.current; draw(); };
-addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTimeout(draw, 150); });
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+const ysel = document.getElementById("ysel");
+ysel.innerHTML = YEARS.slice().reverse().map(y => `<option value="${y}">${y}</option>`).join("");
+document.getElementById("yprev").onclick = () => { year = YEARS[YEARS.indexOf(year) - 1]; drawYear(); };
+document.getElementById("ynext").onclick = () => { year = YEARS[YEARS.indexOf(year) + 1]; drawYear(); };
+ysel.onchange = () => { year = +ysel.value; drawYear(); };
+document.getElementById("ytoday").onclick = () => { year = yearOf(DATA.current); drawYear(); };
+addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTimeout(render, 150); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 
-draw();
+showTab();
 
 // The button exists only when the page is served by serve.py: a file:// page
 // has no way to run anything on the machine.

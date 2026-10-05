@@ -28,6 +28,17 @@ current one.
    right, open tasks to the left, each split into "created earlier" and
    "created this week".
 
+The **Year** tab shows how the stock of open tasks moved through a year, with
+navigation by year. The level at the start of the year is zero. There is one
+column per week: it starts where the previous week ended, sinks by what was
+closed in the week and is as long as what was added in it. Its top is how far
+the stock is from where the year began. Tasks without an area are left out.
+
+Under the columns are the projects closed in each week, hung on a dashed line
+dropped from the week; canceled projects are in grey. Hovering a name marks the
+weeks the project lived through, from its first completed task (or its
+creation, if no task was completed) to its closing.
+
 ## History
 
 Past weeks come from a local history, `history.sqlite`, not from the current

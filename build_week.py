@@ -367,15 +367,20 @@ def freeze(con, flows, pweeks, alive, since):
 # ---- 4. page data ------------------------------------------------------------
 
 def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
-    """One week for the page: wheel spokes, the flow bar, project rows.
+    """One week for the page: wheel spokes, the flow bar, the flow of the tasks
+    with an area for the year tab, project rows.
     touched is {area: to-dos touched}, or None for a week without this number."""
     closed = defaultdict(int)
     new_open = new_closed = old_closed = 0
+    area_added = area_closed = 0                    # the same flow, tasks without an area left out
     for (_, a), v in flow_rows:
         closed[a] += v[1] + v[2] + v[3] + v[4]
         new_open += v[0]
         new_closed += v[1] + v[2]
         old_closed += v[3] + v[4]
+        if a != NO_AREA:
+            area_added += v[0] + v[1] + v[2]
+            area_closed += v[1] + v[2] + v[3] + v[4]
     title = lambda a: spokes.get(a) or meta["areas"][a]
     wheel = [[title(a), closed[a], touched.get(a, 0) if touched is not None else None]
              for a in sorted(set(spokes) | set(closed) | set(touched or ()), key=title)]
@@ -389,10 +394,27 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
         oo, on, coc, coca, cnc, cnca = v[3:]
         state = "open" if not closed_on else ("wk" if closed_on <= end else "later")
         rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on])
-    return {"a": wheel, "f": [new_open, new_closed, old_closed], "p": rows}
+    return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed], "p": rows}
 
 
-def build_payload(con, flows, pweeks, alive):
+def closed_projects(con, tasks):
+    """Closed projects for the year tab: [title, closing date, status, start date].
+    A project starts on the day its first to-do was completed; one without a
+    completed to-do starts on the day it was created."""
+    # the exact day while the to-dos are in Things, else the week kept in the history
+    started = dict(con.execute("""SELECT project_uuid, MIN(week_start) FROM project_week
+                                  WHERE closed_old_completed + closed_new_completed > 0 GROUP BY 1"""))
+    live = {}
+    for t in tasks:
+        if t["s"] and not t["canceled"] and t["s"] <= TODAY:
+            live[t["project"]] = min(t["s"], live.get(t["project"], t["s"]))
+    started.update({u: iso(day) for u, day in live.items()})
+    return [[t, s, st, min(started.get(u, c), s)] for u, t, c, s, st in con.execute("""
+                SELECT project_uuid, title, created, closed, status FROM project
+                WHERE closed IS NOT NULL AND status IN (2, 3) ORDER BY closed, title""")]
+
+
+def build_payload(con, flows, pweeks, alive, tasks):
     current = week_start(TODAY)
     meta = {
         "areas": dict(con.execute("SELECT area_uuid, title FROM area")),
@@ -428,7 +450,8 @@ def build_payload(con, flows, pweeks, alive):
         for (day, _), v in week_flow[w]:
             closed[(date.fromisoformat(day) - first).days] += v[1] + v[2] + v[3] + v[4]
     return {"weeks": weeks, "current": iso(current), "today": iso(TODAY),
-            "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen)}
+            "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen),
+            "pr": closed_projects(con, tasks)}
 
 
 def main():
@@ -458,7 +481,7 @@ def main():
         con.execute("ROLLBACK")
         raise
 
-    payload = build_payload(con, flows, pweeks, alive)
+    payload = build_payload(con, flows, pweeks, alive, tasks)
     con.close()
 
     blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
