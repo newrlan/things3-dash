@@ -1,18 +1,18 @@
-# Накопительная история: схема данных
+# Weekly history: data schema
 
-## Зачем
+## Why
 
-Дашборд строится из текущего состояния базы Things. Всё, что из неё исчезло (удалённые области, проекты, задачи после очистки корзины), пропадает и из статистики за прошлые недели. Накопительная история фиксирует недельную статистику до того, как данные исчезнут.
+The dashboard is built from the current state of the Things database. Whatever has disappeared from it (deleted areas, projects, tasks after the trash is emptied) disappears from the statistics of past weeks as well. The weekly history records the numbers of a week before the data is gone.
 
-## Принципы
+## Principles
 
-- Полные недели замораживаются. При первом обновлении после окончания недели её строки пишутся один раз и больше не меняются. Текущая неделя всегда считается заново из базы Things.
-- Первое заполнение: все прошлые недели из текущей базы.
-- Области и проекты хранятся с последним известным названием; удаление в Things их не стирает из памяти дашборда.
-- Для каждой замороженной недели фиксируется список областей с их названиями на момент заморозки: колесо прошлой недели показывает названия «на дату».
-- Проект приписывается к последней известной области. Если область удалили, задачи её проектов, в том числе закрытые уже после удаления, засчитываются удалённой области, а не «Без области». Задача относится к своей области, если она есть, иначе к области своего проекта.
+- Complete weeks are frozen. At the first refresh after a week ends its rows are written once and never change again. The running week is always computed anew from the Things database.
+- First fill: all past weeks from the current database.
+- Areas and projects are kept with their last known title; deleting them in Things does not erase them from the dashboard's memory.
+- For every frozen week the list of areas is recorded with their titles at the freeze: the wheel of a past week shows the titles as of that date.
+- A project is assigned to its last known area. If the area was deleted, the tasks of its projects, including those closed after the deletion, count for the deleted area and not for "Без области" (no area). A task belongs to its own area if it has one, otherwise to the area of its project.
 
-## Схема
+## Schema
 
 ```mermaid
 erDiagram
@@ -87,9 +87,9 @@ erDiagram
     }
 ```
 
-`day_flow` связана с неделей не внешним ключом, а датой: день относится к неделе, в которую попадает. `touch` хранит только недели, которых ещё нет в `week`.
+`day_flow` is tied to a week by the date, not by a foreign key: a day belongs to the week it falls into. `touch` holds only the weeks that are not in `week` yet.
 
-## Справочники
+## Reference tables
 
 ```sql
 -- Area uuid '' is the "no area" bucket: tasks without a project and an area,
@@ -105,7 +105,7 @@ CREATE TABLE area (
 CREATE TABLE project (
   project_uuid TEXT PRIMARY KEY,
   title        TEXT NOT NULL,
-  area_uuid    TEXT NOT NULL REFERENCES area,  -- last known area, see "Последняя известная область"
+  area_uuid    TEXT NOT NULL REFERENCES area,  -- last known area, see "Last known area"
   created      TEXT NOT NULL,     -- creation date
   closed       TEXT,              -- completion/cancel date, NULL if open
   status       INTEGER NOT NULL,  -- 0 open, 2 canceled, 3 completed (last known)
@@ -130,29 +130,29 @@ CREATE TABLE week (
 );
 ```
 
-### Последняя известная область
+### Last known area
 
-При удалении области Things переводит её проекты и задачи в «без области» и очищает у них поле `area`: ссылки на удалённую область в базе не остаётся. Принадлежность к области может сохранить только история, на обновлениях до удаления.
+When an area is deleted, Things moves its projects and tasks to "no area" and clears their `area` field: no reference to the deleted area is left in the database. Only the history can keep the link to the area, from the refreshes made before the deletion.
 
-Правило обновления `project.area_uuid` при каждом обновлении:
-- у записи есть область - записать её (так учитывается и перенос между областями);
-- области нет, а прежняя область пропала из этой же выгрузки (удалена) - оставить
-  прежнее значение;
-- области нет, а прежняя область по-прежнему существует (запись вывели из области
-  вручную) - записать «Без области» (`''`).
+The rule for `project.area_uuid` at every refresh:
+- the record has an area - write it (this also covers a move between areas);
+- there is no area, and the previous area is gone from the same export (deleted) -
+  keep the previous value;
+- there is no area, and the previous area still exists (the record was taken out of
+  the area by hand) - write "Без области" (`''`).
 
-Задача относится к своей области, если она есть, иначе к `project.area_uuid` своего проекта.
+A task belongs to its own area if it has one, otherwise to the `project.area_uuid` of its project.
 
-Ограничения:
-- задачи без проекта, лежавшие прямо в удалённой области, переходят в «Без области» во всех ещё не замороженных неделях: их область история не хранит;
-- проекты из областей, удалённых до запуска истории, навсегда остаются в «Без области»;
-- если область создали и удалили между двумя обновлениями, история её не увидит.
+Limitations:
+- tasks without a project that sat directly in a deleted area move to "Без области" in all the weeks not frozen yet: the history does not keep their area;
+- projects from areas deleted before the history was started stay in "Без области" for good;
+- an area created and deleted between two refreshes is never seen by the history.
 
-## Данные для графиков
+## Data for the charts
 
-### 1. Распределение закрытий по дням недели, 2. Баланс по областям, 3. Добавлено и сделано за неделю
+### 1. Closures by weekday, 2. Balance by area, 3. Added and done in the week
 
-Одна таблица на все три графика: для каждого дня и области - сколько задач закрыто, отдельно созданные на той же неделе и раньше, и сколько задач, созданных в этот день, осталось открытым к концу недели.
+One table for all three charts: for every day and area, how many tasks were closed, with those created in the same week and those created earlier kept apart, and how many tasks created that day were still open at the end of the week.
 
 ```sql
 CREATE TABLE day_flow (
@@ -167,14 +167,14 @@ CREATE TABLE day_flow (
 );
 ```
 
-Графики получаются суммированием:
-- распределение по дням недели - закрытия (`new_*` + `old_*`) за каждый день по всем областям;
-- колесо - закрытия за 7 дней недели для каждой области;
-- полоса - суммы за неделю по всем дням и областям: `new_open` - новые не закрытые, `new_*` - новые закрытые, `old_*` - старые закрытые.
+The charts are sums over it:
+- closures by weekday - the closures (`new_*` + `old_*`) of each day over all areas;
+- the wheel - the closures of the 7 days of the week for each area;
+- the bar - the sums of the week over all days and areas: `new_open` - new and not closed, `new_*` - new and closed, `old_*` - old and closed.
 
-«Новая» и «старая» задача определяются относительно недели, в которую попадает день (с понедельника). Если поменять начало недели, разбивку для замороженных дней пересчитать будет нельзя.
+A task is "new" or "old" relative to the week its day falls into (starting on Monday). If the start of the week is changed, the split cannot be recomputed for the frozen days.
 
-Какие лучи рисовать для прошлой недели и под какими названиями - из `area_week`: области, существовавшие на момент заморозки, с тогдашними названиями. Удалённая позже область остаётся в своих неделях под своим названием. `area.title` - только последнее известное название, для всего остального.
+Which spokes to draw for a past week and under which titles comes from `area_week`: the areas that existed at the freeze, with the titles they had then. An area deleted later stays in its weeks under its title. `area.title` is only the last known title, for everything else.
 
 ```sql
 -- Areas as they were when the week was frozen: which spokes the wheel shows
@@ -188,15 +188,15 @@ CREATE TABLE area_week (
 );
 ```
 
-Ограничения:
-- недели из первого заполнения получат сегодняшние названия: прошлых названий в Things нет;
-- неделя замораживается при первом обновлении после её окончания; если область переименовали между концом недели и этим обновлением, неделя получит новое название.
+Limitations:
+- the weeks of the first fill get today's titles: Things does not keep past titles;
+- a week is frozen at the first refresh after it ends; if an area was renamed between the end of the week and that refresh, the week gets the new title.
 
-### Затронутые задачи
+### Touched tasks
 
-Внешняя линия колеса: сколько задач области затронуто за неделю. Касание - создание, любая правка или закрытие задачи. Задачи, которые ещё лежат в Inbox (открытые, `start = 0`), не считаются.
+The outer line of the wheel: how many tasks of an area were touched in the week. A touch is the creation, any edit or the closing of a task. Tasks still in the Inbox (open, `start = 0`) are not counted.
 
-Things хранит у задачи одну дату изменения и перезаписывает её при каждой правке, поэтому посчитать касания один раз при заморозке нельзя. Они копятся при каждом обновлении:
+Things keeps one modification date per task and overwrites it on every edit, so the touches cannot be counted once at the freeze. They are collected at every refresh:
 
 ```sql
 -- To-dos touched in the weeks not frozen yet, one row per week and to-do.
@@ -208,20 +208,20 @@ CREATE TABLE touch (
 );
 ```
 
-При каждом обновлении задача вне Inbox записывается в недели, в которые попадают её даты создания, закрытия и последнего изменения, если неделя не раньше `meta.touch_since` и ещё не заморожена. Запись через upsert: повторные обновления задачу не удваивают, область берётся из последнего наблюдения.
+At every refresh a task outside the Inbox is written into the weeks its creation, closing and last modification dates fall into, if the week is not earlier than `meta.touch_since` and is not frozen yet. The write is an upsert: repeated refreshes do not count a task twice, and the area is taken from the last observation.
 
-При заморозке недели её строки сворачиваются в `area_week.touched` и удаляются из `touch`. У недель раньше `touch_since` в `touched` стоит `NULL`, колесо рисует для них только закрытия. Текущая неделя берётся из `touch`.
+When a week is frozen, its rows are folded into `area_week.touched` and deleted from `touch`. Weeks earlier than `touch_since` have `NULL` in `touched`, and the wheel draws only the closures for them. The running week is taken from `touch`.
 
-Ограничения:
-- правка учитывается, только если обновление случилось до следующей правки той же задачи на другой неделе: число может быть занижено, но не завышено;
-- задача, изменённая и удалённая между двумя обновлениями, не учитывается;
-- касания, замеченные после заморозки недели, отбрасываются.
+Limitations:
+- an edit is counted only if a refresh happened before the next edit of the same task in another week: the number can be too low, but never too high;
+- a task edited and deleted between two refreshes is not counted;
+- touches noticed after the week was frozen are dropped.
 
-### 4. Проекты недели
+### 4. Projects of the week
 
-Для каждой недели и проекта хранятся открытые и закрытые задачи на конец недели, отдельно добавленные на этой неделе и раньше. Вместе с ними сохраняются область проекта и признак Someday на момент заморозки.
+For every week and project the open and closed tasks at the end of the week are kept, with those added in the week and those added earlier kept apart. The area of the project and its Someday flag at the freeze are stored with them.
 
-Сейчас график берёт область и Someday из текущего состояния Things, поэтому для прошлых недель они могут не совпадать с тогдашними. В истории они будут тогдашними, но только для недель, замороженных после внедрения.
+At present the chart takes the area and Someday from the current state of Things, so for past weeks they may differ from what they were then. In the history they will be as they were, but only for the weeks frozen after the rollout.
 
 ```sql
 CREATE TABLE project_week (
@@ -240,17 +240,17 @@ CREATE TABLE project_week (
 );
 ```
 
-## Повторные пересчёты и надёжность записи
+## Repeated runs and safe writes
 
-Обновление может запускаться несколько раз в день (кнопка в `serve.py`, `./refresh.sh`).
-Результат не должен зависеть от числа запусков.
+A refresh can run several times a day (the button served by `serve.py`, `./refresh.sh`).
+The result must not depend on the number of runs.
 
-1. Текущая неделя в базу не пишется, она каждый раз считается из Things заново. Исключение - `touch`: туда пишутся наблюдения за незамороженные недели.
-2. Заморозка недели выполняется один раз, в одной транзакции:
-   - проверить, есть ли неделя в `week`;
-   - если нет, записать её строки в `day_flow`, `area_week`, `project_week` и строку в `week`, удалить её строки из `touch`;
-   - если есть, ничего не делать.
+1. The running week is not written to the database, it is computed from Things anew every time. The exception is `touch`: the observations for the weeks not frozen yet are written there.
+2. A week is frozen once, in one transaction:
+   - check whether the week is in `week`;
+   - if not, write its rows into `day_flow`, `area_week`, `project_week` and a row into `week`, and delete its rows from `touch`;
+   - if it is, do nothing.
 
-   Запись обычным `INSERT`, без `OR REPLACE`: повторная попытка записать замороженную неделю из-за ошибки в коде упирается в первичный ключ и даёт ошибку.
-3. Справочники (`area`, `project`) обновляются через upsert (`INSERT ... ON CONFLICT DO UPDATE`): `title`, `status`, `last_seen` перезаписываются теми же значениями, `first_seen` не трогается, области обновляются по правилу «Последняя известная область». `deleted_at` выставляется, только если записи нет в выгрузке и поле пустое, и сбрасывается, если запись снова появилась.
-6. Проверка выгрузки до любой записи в базу: в выгрузке есть задачи, их число не меньше половины от прошлой принятой выгрузки (`meta.export_todos`). Иначе обновление прерывается без записи. Без этой проверки неудачный экспорт в день заморозки навсегда запишет неделю из нулей и пометит все области и проекты удалёнными.
+   The write is a plain `INSERT`, without `OR REPLACE`: a second attempt to write a frozen week caused by a bug in the code hits the primary key and fails.
+3. The reference tables (`area`, `project`) are updated by an upsert (`INSERT ... ON CONFLICT DO UPDATE`): `title`, `status`, `last_seen` are overwritten with the same values, `first_seen` is left alone, the areas follow the "Last known area" rule. `deleted_at` is set only if the record is missing from the export and the field is empty, and is cleared if the record shows up again.
+4. The export is checked before anything is written to the database: it has tasks, and their number is not less than half of the previous accepted export (`meta.export_todos`). Otherwise the refresh stops without writing. Without this check a failed export on the day of a freeze would write a week of zeros for good and mark all areas and projects as deleted.

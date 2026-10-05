@@ -129,7 +129,7 @@ def stop_of(row):
 
 
 def keep_area(now, prev, alive):
-    """Last known area, see "Последняя известная область" in docs/history-schema.md."""
+    """Last known area, see "Last known area" in docs/history-schema.md."""
     if now:
         return now
     if prev and prev not in alive:                  # the area was deleted: keep it
