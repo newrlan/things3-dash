@@ -675,6 +675,17 @@ function weeksOf(y) {
 // stock of open tasks is from where the year began. Tasks without an area are
 // left out. Under the columns are the projects closed in each week, hung on a
 // dashed line dropped from the week.
+// a project's life in words: days up to a month, calendar months and days beyond
+function lifeSpan(from, to) {
+  const a = addDays(from, 0), b = addDays(to, 0);
+  // the same day of a later month, or its last day when the month is shorter
+  const after = m => new Date(a.getFullYear(), a.getMonth() + m,
+    Math.min(a.getDate(), new Date(a.getFullYear(), a.getMonth() + m + 1, 0).getDate()));
+  let months = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
+  while (months > 0 && after(months) > b) months--;
+  const days = Math.round((b - after(months)) / 864e5);
+  return months > 0 ? months + " мес." + (days ? " " + days + " дн." : "") : days + " дн.";
+}
 const mondayOf = iso => isoOf(addDays(iso, -((addDays(iso, 0).getDay() + 6) % 7)));
 const CLOSED_IN = {};                             // {week start: [[title, closing date, status, start date]]}
 for (const p of DATA.pr) {
@@ -807,7 +818,7 @@ function drawYear() {
       lb.addEventListener("mousemove", ev => showTip(ev, title, [
         { k: st === 3 ? "Завершён" : "Отменён", v: human(addDays(closed, 0)), b: true },
         { k: "Начат", v: human(addDays(started, 0)) },
-        { k: "Длительность", v: Math.round((addDays(closed, 0) - addDays(started, 0)) / 864e5) + " дн." }
+        { k: "Длительность", v: lifeSpan(started, closed) }
       ]));
       lb.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; });
       names.appendChild(lb);

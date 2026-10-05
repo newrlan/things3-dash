@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS project (
   status       INTEGER NOT NULL,
   first_seen   {DATE.format("first_seen")},
   last_seen    {DATE.format("last_seen")},
-  deleted_at   TEXT
+  deleted_at   TEXT,
+  repeating    INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS meta (
   key    TEXT PRIMARY KEY,
@@ -169,6 +170,7 @@ def read_things():
                    project,         -- uuid of the parent project
                    heading,         -- uuid of the parent heading, when the item sits under one
                    area,            -- uuid of the area
+                   rt1_repeatingTemplate,  -- uuid of the repeating template this item was made from
                    CASE WHEN type IN (1, 2) THEN title ELSE '' END AS item_title
             FROM TMTask
             WHERE trashed = 0""")]
@@ -220,14 +222,16 @@ def update_projects(con, rows, alive):
         area = keep_area(r["area"], prev.get(r["uuid"]), alive)
         out[r["uuid"]] = (area, r)
         upserts.append((r["uuid"], r["item_title"] or "(без названия)", area, iso(d(r["creationDate"])),
-                        iso(d(r["stopDate"])), int(r["status"]), today, today))
+                        iso(d(r["stopDate"])), int(r["status"]), today, today,
+                        int(bool(r["rt1_repeatingTemplate"]))))
     con.executemany("""
-        INSERT INTO project (project_uuid, title, area_uuid, created, closed, status, first_seen, last_seen)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO project (project_uuid, title, area_uuid, created, closed, status, first_seen, last_seen,
+                             repeating)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (project_uuid) DO UPDATE SET
           title = excluded.title, area_uuid = excluded.area_uuid, created = excluded.created,
           closed = excluded.closed, status = excluded.status, last_seen = excluded.last_seen,
-          deleted_at = NULL""", upserts)
+          deleted_at = NULL, repeating = MAX(repeating, excluded.repeating)""", upserts)
     gone = [(today, u) for (u,) in con.execute("SELECT project_uuid FROM project WHERE deleted_at IS NULL")
             if u not in out]
     con.executemany("UPDATE project SET deleted_at = ? WHERE project_uuid = ?", gone)
@@ -400,7 +404,8 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
 def closed_projects(con, tasks):
     """Closed projects for the year tab: [title, closing date, status, start date].
     A project starts on the day its first to-do was completed; one without a
-    completed to-do starts on the day it was created."""
+    completed to-do starts on the day it was created. Copies of repeating
+    projects stay out."""
     # the exact day while the to-dos are in Things, else the week kept in the history
     started = dict(con.execute("""SELECT project_uuid, MIN(week_start) FROM project_week
                                   WHERE closed_old_completed + closed_new_completed > 0 GROUP BY 1"""))
@@ -411,7 +416,8 @@ def closed_projects(con, tasks):
     started.update({u: iso(day) for u, day in live.items()})
     return [[t, s, st, min(started.get(u, c), s)] for u, t, c, s, st in con.execute("""
                 SELECT project_uuid, title, created, closed, status FROM project
-                WHERE closed IS NOT NULL AND status IN (2, 3) ORDER BY closed, title""")]
+                WHERE closed IS NOT NULL AND status IN (2, 3) AND NOT repeating
+                ORDER BY closed, title""")]
 
 
 def build_payload(con, flows, pweeks, alive, tasks):
@@ -464,6 +470,8 @@ def main():
     con.executescript(SCHEMA)
     if "touched" not in [c[1] for c in con.execute("PRAGMA table_info(area_week)")]:
         con.execute("ALTER TABLE area_week ADD COLUMN touched INTEGER")     # history made before touches
+    if "repeating" not in [c[1] for c in con.execute("PRAGMA table_info(project)")]:
+        con.execute("ALTER TABLE project ADD COLUMN repeating INTEGER NOT NULL DEFAULT 0")
     # one write transaction: a second refresh waits for the first one and then
     # finds the weeks already frozen
     con.execute("BEGIN IMMEDIATE")
