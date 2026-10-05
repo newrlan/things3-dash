@@ -20,6 +20,7 @@ erDiagram
     area ||--o{ day_flow : ""
     area ||--o{ area_week : ""
     area ||--o{ project_week : "area at week end"
+    area ||--o{ touch : ""
     week ||--o{ area_week : ""
     week ||--o{ project_week : ""
     project ||--o{ project_week : ""
@@ -64,6 +65,12 @@ erDiagram
         TEXT week_start PK, FK
         TEXT area_uuid PK, FK
         TEXT title
+        INTEGER touched
+    }
+    touch {
+        TEXT week_start PK
+        TEXT task_uuid PK
+        TEXT area_uuid FK
     }
     project_week {
         TEXT week_start PK, FK
@@ -80,7 +87,7 @@ erDiagram
     }
 ```
 
-`day_flow` связана с неделей не внешним ключом, а датой: день относится к неделе, в которую попадает.
+`day_flow` связана с неделей не внешним ключом, а датой: день относится к неделе, в которую попадает. `touch` хранит только недели, которых ещё нет в `week`.
 
 ## Справочники
 
@@ -108,7 +115,8 @@ CREATE TABLE project (
 );
 
 -- Service values; 'export_todos' is the number of to-dos in the last accepted
--- export, used to refuse a broken one.
+-- export, used to refuse a broken one; 'touch_since' is the first week the
+-- touched to-dos are collected for.
 CREATE TABLE meta (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
@@ -175,6 +183,7 @@ CREATE TABLE area_week (
   week_start  TEXT NOT NULL REFERENCES week,
   area_uuid   TEXT NOT NULL REFERENCES area,
   title       TEXT NOT NULL,     -- title at the freeze
+  touched     INTEGER,           -- to-dos touched in the week, NULL if not collected
   PRIMARY KEY (week_start, area_uuid)
 );
 ```
@@ -182,6 +191,31 @@ CREATE TABLE area_week (
 Ограничения:
 - недели из первого заполнения получат сегодняшние названия: прошлых названий в Things нет;
 - неделя замораживается при первом обновлении после её окончания; если область переименовали между концом недели и этим обновлением, неделя получит новое название.
+
+### Затронутые задачи
+
+Внешняя линия колеса: сколько задач области затронуто за неделю. Касание - создание, любая правка или закрытие задачи. Задачи, которые ещё лежат в Inbox (открытые, `start = 0`), не считаются.
+
+Things хранит у задачи одну дату изменения и перезаписывает её при каждой правке, поэтому посчитать касания один раз при заморозке нельзя. Они копятся при каждом обновлении:
+
+```sql
+-- To-dos touched in the weeks not frozen yet, one row per week and to-do.
+CREATE TABLE touch (
+  week_start  TEXT NOT NULL,     -- Monday of the week of the touch
+  task_uuid   TEXT NOT NULL,
+  area_uuid   TEXT NOT NULL REFERENCES area,  -- area at the last observation
+  PRIMARY KEY (week_start, task_uuid)
+);
+```
+
+При каждом обновлении задача вне Inbox записывается в недели, в которые попадают её даты создания, закрытия и последнего изменения, если неделя не раньше `meta.touch_since` и ещё не заморожена. Запись через upsert: повторные обновления задачу не удваивают, область берётся из последнего наблюдения.
+
+При заморозке недели её строки сворачиваются в `area_week.touched` и удаляются из `touch`. У недель раньше `touch_since` в `touched` стоит `NULL`, колесо рисует для них только закрытия. Текущая неделя берётся из `touch`.
+
+Ограничения:
+- правка учитывается, только если обновление случилось до следующей правки той же задачи на другой неделе: число может быть занижено, но не завышено;
+- задача, изменённая и удалённая между двумя обновлениями, не учитывается;
+- касания, замеченные после заморозки недели, отбрасываются.
 
 ### 4. Проекты недели
 
@@ -211,10 +245,10 @@ CREATE TABLE project_week (
 Обновление может запускаться несколько раз в день (кнопка в `serve.py`, `./refresh.sh`).
 Результат не должен зависеть от числа запусков.
 
-1. Текущая неделя в базу не пишется, она каждый раз считается из Things заново.
+1. Текущая неделя в базу не пишется, она каждый раз считается из Things заново. Исключение - `touch`: туда пишутся наблюдения за незамороженные недели.
 2. Заморозка недели выполняется один раз, в одной транзакции:
    - проверить, есть ли неделя в `week`;
-   - если нет, записать её строки в `day_flow`, `area_week`, `project_week` и строку в `week`;
+   - если нет, записать её строки в `day_flow`, `area_week`, `project_week` и строку в `week`, удалить её строки из `touch`;
    - если есть, ничего не делать.
 
    Запись обычным `INSERT`, без `OR REPLACE`: повторная попытка записать замороженную неделю из-за ошибки в коде упирается в первичный ключ и даёт ошибку.

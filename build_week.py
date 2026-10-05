@@ -4,8 +4,9 @@ Steps:
   1. read the Things database (read-only) and refuse an export that looks broken;
   2. update the reference tables of history.sqlite (areas, projects with their
      last known area);
-  3. freeze every complete week that is not frozen yet;
-  4. take the frozen weeks from the history, compute the running week live with
+  3. remember the to-dos touched in the weeks not frozen yet (table touch);
+  4. freeze every complete week that is not frozen yet;
+  5. take the frozen weeks from the history, compute the running week live with
      the same code, and embed it all into week.html.
 
 The schema and its rules are described in docs/history-schema.md.
@@ -74,7 +75,14 @@ CREATE TABLE IF NOT EXISTS area_week (
   week_start  TEXT NOT NULL REFERENCES week,
   area_uuid   TEXT NOT NULL REFERENCES area,
   title       TEXT NOT NULL,
+  touched     INTEGER,
   PRIMARY KEY (week_start, area_uuid)
+);
+CREATE TABLE IF NOT EXISTS touch (
+  week_start  TEXT NOT NULL,
+  task_uuid   TEXT NOT NULL,
+  area_uuid   TEXT NOT NULL REFERENCES area,
+  PRIMARY KEY (week_start, task_uuid)
 );
 CREATE TABLE IF NOT EXISTS project_week (
   week_start      TEXT NOT NULL REFERENCES week,
@@ -157,6 +165,7 @@ def read_things():
                    creationDate,    -- unix time
                    stopDate,        -- unix time, set when completed or canceled
                    start,           -- 0 = Inbox, 1 = Anytime, 2 = Someday
+                   userModificationDate,  -- unix time of the last edit, any change
                    project,         -- uuid of the parent project
                    heading,         -- uuid of the parent heading, when the item sits under one
                    area,            -- uuid of the area
@@ -238,8 +247,43 @@ def read_tasks(con, todos, heads):
         # a to-do under a heading belongs to the heading's project
         pu = r["project"] or heads.get(r["heading"], {}).get("project") or ""
         area = r["area"] or project_area.get(pu, NO_AREA)
-        tasks.append({"c": c, "s": stop_of(r), "canceled": r["status"] == 2, "area": area, "project": pu})
+        s = stop_of(r)
+        tasks.append({"uuid": r["uuid"], "c": c, "s": s, "m": d(r["userModificationDate"]),
+                      "inbox": s is None and r["start"] == 0,
+                      "canceled": r["status"] == 2, "area": area, "project": pu})
     return tasks
+
+
+def update_touch(con, tasks):
+    """Remembers the to-dos touched in the weeks not frozen yet.
+
+    Things keeps one modification date per to-do and overwrites it on every edit,
+    so a touch has to be written down while it is still visible. Creation and
+    closing are touches too. To-dos still in the Inbox stay out. Returns the
+    first week the touches are collected for.
+    """
+    row = con.execute("SELECT value FROM meta WHERE key = 'touch_since'").fetchone()
+    since = row[0] if row else iso(week_start(TODAY))
+    if not row:
+        con.execute("INSERT INTO meta (key, value) VALUES ('touch_since', ?)", (since,))
+    frozen = {w for (w,) in con.execute("SELECT week_start FROM week")}
+    seen = []
+    for t in tasks:
+        if t["inbox"]:
+            continue
+        for day in {t["c"], t["s"], t["m"]}:
+            if day and day <= TODAY:
+                w = iso(week_start(day))
+                if w >= since and w not in frozen:
+                    seen.append((w, t["uuid"], t["area"]))
+    con.executemany("""
+        INSERT INTO touch (week_start, task_uuid, area_uuid) VALUES (?, ?, ?)
+        ON CONFLICT (week_start, task_uuid) DO UPDATE SET area_uuid = excluded.area_uuid""", seen)
+    return since
+
+
+def touched_by_area(con, w):
+    return dict(con.execute("SELECT area_uuid, COUNT(*) FROM touch WHERE week_start = ? GROUP BY area_uuid", (w,)))
 
 
 # ---- 3. weekly numbers, shared by the freeze and the running week ----------
@@ -292,7 +336,7 @@ def project_weeks(tasks, projects):
     return out
 
 
-def freeze(con, flows, pweeks, alive):
+def freeze(con, flows, pweeks, alive, since):
     """Writes every complete week that is not frozen yet. Plain INSERT on purpose:
     writing a frozen week twice is a bug and must fail, not overwrite."""
     frozen = {w for (w,) in con.execute("SELECT week_start FROM week")}
@@ -306,9 +350,13 @@ def freeze(con, flows, pweeks, alive):
             rows = flows.get(w, {})
             con.executemany("INSERT INTO day_flow VALUES (?, ?, ?, ?, ?, ?, ?)",
                             [(iso(day), a, *v) for (day, a), v in rows.items()])
+            # touches are known only from the week they started to be collected
+            touched = touched_by_area(con, iso(w)) if iso(w) >= since else None
             # spokes of the week: the areas that exist now, plus any area with activity in it
-            con.executemany("INSERT INTO area_week VALUES (?, ?, ?)",
-                            [(iso(w), a, titles[a]) for a in alive | {a for _, a in rows}])
+            con.executemany("INSERT INTO area_week VALUES (?, ?, ?, ?)",
+                            [(iso(w), a, titles[a], touched.get(a, 0) if touched is not None else None)
+                             for a in alive | {a for _, a in rows} | set(touched or ())])
+            con.execute("DELETE FROM touch WHERE week_start = ?", (iso(w),))
             con.executemany("INSERT INTO project_week VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             [(iso(w), pu, *v) for pu, v in pweeks.get(w, {}).items()])
             n += 1
@@ -318,8 +366,9 @@ def freeze(con, flows, pweeks, alive):
 
 # ---- 4. page data ------------------------------------------------------------
 
-def week_payload(ws, flow_rows, spokes, project_rows, meta):
-    """One week for the page: wheel spokes, the flow bar, project rows."""
+def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
+    """One week for the page: wheel spokes, the flow bar, project rows.
+    touched is {area: to-dos touched}, or None for a week without this number."""
     closed = defaultdict(int)
     new_open = new_closed = old_closed = 0
     for (_, a), v in flow_rows:
@@ -328,7 +377,8 @@ def week_payload(ws, flow_rows, spokes, project_rows, meta):
         new_closed += v[1] + v[2]
         old_closed += v[3] + v[4]
     title = lambda a: spokes.get(a) or meta["areas"][a]
-    wheel = [[title(a), closed[a]] for a in sorted(set(spokes) | set(closed), key=title)]
+    wheel = [[title(a), closed[a], touched.get(a, 0) if touched is not None else None]
+             for a in sorted(set(spokes) | set(closed) | set(touched or ()), key=title)]
 
     end = iso(cutoff(ws))
     rows = []
@@ -352,20 +402,23 @@ def build_payload(con, flows, pweeks, alive):
     week_flow = defaultdict(list)
     for day, a, *v in con.execute("SELECT * FROM day_flow"):
         week_flow[iso(week_start(date.fromisoformat(day)))].append(((day, a), v))
-    week_spokes = defaultdict(dict)
-    for w, a, t in con.execute("SELECT week_start, area_uuid, title FROM area_week"):
+    week_spokes, week_touched = defaultdict(dict), {}
+    for w, a, t, n in con.execute("SELECT week_start, area_uuid, title, touched FROM area_week"):
         week_spokes[w][a] = t
+        if n is not None:
+            week_touched.setdefault(w, {})[a] = n
     week_projects = defaultdict(dict)
     for w, pu, *v in con.execute("SELECT * FROM project_week"):
         week_projects[w][pu] = v
     frozen = [w for (w,) in con.execute("SELECT week_start FROM week ORDER BY week_start")]
 
-    wk = {w: week_payload(date.fromisoformat(w), week_flow[w], week_spokes[w], week_projects[w], meta)
+    wk = {w: week_payload(date.fromisoformat(w), week_flow[w], week_spokes[w], week_touched.get(w),
+                          week_projects[w], meta)
           for w in frozen}
     # the running week is computed live; its spokes are the areas that exist now
     week_flow[iso(current)] = [((iso(day), a), v) for (day, a), v in flows.get(current, {}).items()]
     wk[iso(current)] = week_payload(current, week_flow[iso(current)], {a: meta["areas"][a] for a in alive},
-                                    pweeks.get(current, {}), meta)
+                                    touched_by_area(con, iso(current)), pweeks.get(current, {}), meta)
 
     weeks = sorted(wk)
     # closures per day from the first week to today, for the weekday chart
@@ -386,6 +439,8 @@ def main():
     con = sqlite3.connect(DB, isolation_level=None, timeout=30)
     con.execute("PRAGMA foreign_keys = ON")
     con.executescript(SCHEMA)
+    if "touched" not in [c[1] for c in con.execute("PRAGMA table_info(area_week)")]:
+        con.execute("ALTER TABLE area_week ADD COLUMN touched INTEGER")     # history made before touches
     # one write transaction: a second refresh waits for the first one and then
     # finds the weeks already frozen
     con.execute("BEGIN IMMEDIATE")
@@ -396,7 +451,8 @@ def main():
         tasks = read_tasks(con, todos, heads)
         flows = day_flows(tasks)
         pweeks = project_weeks(tasks, projects)
-        n = freeze(con, flows, pweeks, alive)
+        since = update_touch(con, tasks)
+        n = freeze(con, flows, pweeks, alive, since)
         con.execute("COMMIT")
     except BaseException:
         con.execute("ROLLBACK")
