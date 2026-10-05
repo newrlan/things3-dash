@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-05
+
+### Added
+
+- MIT license.
+
+### Changed
+
+- `docs/history-schema.md` is translated into English.
+
 ## [0.3.0] - 2026-10-05
 
 ### Added
@@ -15,7 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edited or closed, tasks still in the Inbox left out). Collected at every
   refresh starting from the week of the first run; earlier weeks show closures
   only.
-- MIT license.
 
 ### Changed
 
@@ -68,7 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local http server `serve.py` with a refresh button on the page.
 - README with setup and usage instructions, dashboard screenshot.
 
-[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/newrlan/things3-dash/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/newrlan/things3-dash/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/newrlan/things3-dash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/newrlan/things3-dash/releases/tag/v0.1.0
