@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-05
+
 ### Added
 
 - Weekly history in `history.sqlite`: every complete week is frozen once and
@@ -49,5 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local http server `serve.py` with a refresh button on the page.
 - README with setup and usage instructions, dashboard screenshot.
 
-[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/newrlan/things3-dash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/newrlan/things3-dash/releases/tag/v0.1.0
