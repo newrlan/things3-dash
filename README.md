@@ -144,3 +144,7 @@ is opened as a local file.
 | `refresh.sh` | Runs the build |
 | `serve.py` | Local http server with the refresh endpoint |
 | `docs/history-schema.md` | Schema and rules of `history.sqlite` |
+
+## License
+
+[MIT](LICENSE)

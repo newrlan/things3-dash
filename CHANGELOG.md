@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edited or closed, tasks still in the Inbox left out). Collected at every
   refresh starting from the week of the first run; earlier weeks show closures
   only.
+- MIT license.
 
 ### Changed
 
