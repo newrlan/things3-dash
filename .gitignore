@@ -3,6 +3,11 @@
 tasks.csv
 areas.csv
 week.html
+week.html.tmp
+
+# Weekly history kept by build_week.py: personal data, and the only copy of it
+history.sqlite
+history.sqlite-journal
 
 # Logs of serve.py (manual run via nohup and the launchd agent)
 nohup.out

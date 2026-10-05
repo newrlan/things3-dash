@@ -17,19 +17,29 @@ current one.
    likely that many closures on that day. The distribution is a negative
    binomial fitted on up to 55 previous full weeks. The highlighted cell is the
    selected week. All closures count, including tasks outside projects and areas.
-2. **Weekly burn.** One column per day. Above the line: tasks added this week
-   and still open at the end of the day. Below: tasks closed that day, split into
-   "created before the week" and "added this week".
-3. **Projects of the week.** One row per active project: closed tasks to the
+2. **Balance by area.** A wheel with one spoke per area: how many tasks were
+   closed in each area during the week.
+3. **Added and done in the week.** One bar: tasks added this week and still
+   open, tasks added this week and closed, tasks added earlier and closed.
+4. **Projects of the week.** One row per active project: closed tasks to the
    right, open tasks to the left, each split into "created earlier" and
-   "created this week". Hover a project name to see its whole day-by-day history
-   together with its headings.
+   "created this week".
+
+## History
+
+Past weeks come from a local history, `history.sqlite`, not from the current
+state of Things. Every complete week is frozen once, at the first refresh after
+it ends, and never changes after that; the running week is computed anew on
+every refresh. Areas, projects and tasks deleted in Things later stay in the
+weeks they belong to, under their last known names. On the first run the
+history is filled from the current database. The schema and its rules are in
+[docs/history-schema.md](docs/history-schema.md).
 
 ## Requirements
 
 - macOS with the Things 3 Mac app and its local database
 - `bash` and `sqlite3` (both ship with macOS)
-- Python 3.7 or newer, standard library only
+- Python 3.7 or newer with SQLite 3.24 or newer, standard library only
 
 ## Install
 
@@ -53,7 +63,10 @@ open week.html
 
 1. `export.sh` reads the Things database and writes `tasks.csv` and `areas.csv`
    next to the scripts.
-2. `build_week.py` builds `week.html` from `week.template.html` and the CSV files.
+2. `build_week.py` updates `history.sqlite`, freezes the weeks that have ended
+   and builds `week.html` from `week.template.html`. It refuses an export with no
+   to-dos, or with less than half of the to-dos of the previous one, so that a
+   failed export never gets frozen into the history.
 
 To see fresh data, run `./refresh.sh` again and reload the page.
 
@@ -82,25 +95,32 @@ is opened as a local file.
 
 ## Privacy
 
-- To-do titles are not exported. Only project and heading titles leave the
-  database; they are embedded in `week.html`.
-- `tasks.csv`, `areas.csv` and `week.html` hold your personal data and are
-  listed in `.gitignore`. Do not publish them.
+- To-do titles are not exported. Only project, heading and area titles leave
+  the database; project and area titles are stored in `history.sqlite` and
+  embedded in `week.html`.
+- `tasks.csv`, `areas.csv`, `week.html` and `history.sqlite` hold your personal
+  data and are listed in `.gitignore`. Do not publish them.
+- `history.sqlite` is the only copy of past weeks once Things has forgotten
+  them: keep it in your backups.
 
 ## What is counted
 
 - Trashed items are excluded.
-- Canceled projects are not shown as rows, but their tasks count in the burn chart.
-- Projects currently in Someday are hidden. Things keeps no history of moves,
-  so for past weeks this reflects where a project is now, not where it was then.
-- An area named `Templates` is excluded completely (the name is hard-coded in
-  `build_week.py`).
+- Canceled tasks count as closed, the same as completed ones: cancelling a task
+  takes effort too. The history keeps them apart.
+- A task belongs to its own area, else to its project's area. If an area is
+  deleted in Things, its projects keep it as their last known area; to-dos that
+  sat in the area outside any project fall under "Без области" in the weeks not
+  frozen yet.
+- Canceled projects and projects in Someday are not shown as rows in "Projects
+  of the week"; their tasks still count in the other charts. Someday is taken
+  at the moment a week is frozen; for the weeks filled on the first run it is
+  the state on that day.
 - A task whose closing date is earlier than its creation date is treated as
   closed on its creation day.
 
 ## Known limitations
 
-- Canceled tasks count as closed, the same as completed ones.
 - Repeating to-dos are not filtered out.
 - The export relies on the Things database schema (`TMTask`, `TMArea`). A Things
   update that changes the schema can break it; `export.sh` prints the `TMTask`
@@ -108,14 +128,15 @@ is opened as a local file.
 - `serve.py` listens on `127.0.0.1` only, but `POST /refresh` has no protection
   against requests sent by other web pages open in the same browser, and the
   server gives out every file in the project directory, including the CSV
-  exports. Run it only while you need it.
+  exports and `history.sqlite`. Run it only while you need it.
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `export.sh` | Read-only export from the Things database into CSV |
-| `build_week.py` | Builds `week.html` from the CSV files and the template |
+| `build_week.py` | Updates the history and builds `week.html` from it and the template |
 | `week.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
 | `refresh.sh` | Runs the export and the build |
 | `serve.py` | Local http server with the refresh endpoint |
+| `docs/history-schema.md` | Schema and rules of `history.sqlite` |

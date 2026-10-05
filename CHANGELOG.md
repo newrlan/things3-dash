@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Weekly history in `history.sqlite`: every complete week is frozen once and
+  past weeks no longer change when areas, projects or tasks are deleted in
+  Things. The first run fills the history from the current database. Schema
+  and rules: `docs/history-schema.md`.
+- Balance by area: a wheel of tasks closed per area in the week.
+- Added and done in the week: one bar of new open, new closed and old closed tasks.
+- `build_week.py` refuses an empty export or one with less than half of the
+  previous to-dos, so a failed export is never frozen into the history.
+
+### Changed
+
+- A task belongs to the last known area of itself or its project; tasks
+  outside any area, including loose ones, count as "Без области".
+- `week.html` is written atomically.
+
+### Removed
+
+- Weekly burn chart.
+- Per-project day-by-day history on hover in "Projects of the week".
+- Special handling of the `Templates` area.
+
 ## [0.1.0] - 2026-09-27
 
 ### Added

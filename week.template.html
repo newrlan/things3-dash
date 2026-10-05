@@ -72,10 +72,9 @@
   .chart { width:100%; overflow-x:auto; }
   svg { display:block; }
   .rowlab { font-size:13px; font-weight:600; fill:var(--ink-2); cursor:default; }
-  .rowlab:hover { fill:var(--ink); text-decoration:underline; }
   .val { font-size:10px; font-variant-numeric:tabular-nums; fill:var(--ink-3); }
 
-  .tip, .peek { position:fixed; z-index:20; pointer-events:none; opacity:0;
+  .tip { position:fixed; z-index:20; pointer-events:none; opacity:0;
     background:var(--card); color:var(--ink); border:1px solid var(--border); border-radius:9px;
     box-shadow:0 8px 26px rgba(0,0,0,.18); transition:opacity .07s; }
   .tip { padding:8px 10px; font-size:12px; line-height:1.5;
@@ -86,10 +85,6 @@
   .tip .r.strong { font-weight:600; color:var(--ink); }
   .tip .r.sep { margin-top:6px; }
   .tip .r s { text-decoration:none; margin-left:auto; padding-left:16px; }
-  .peek { padding:12px 14px; }
-  .peek h3 { margin:0 0 1px; font-size:13px; font-weight:620; }
-  .peek .m { font-size:11px; color:var(--ink-3); margin-bottom:9px; font-variant-numeric:tabular-nums; }
-  .peek .none { font-size:12px; color:var(--ink-3); }
 
   .legend { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:12px; font-size:12px; color:var(--ink-2); }
   .legend span { display:flex; align-items:center; gap:6px; }
@@ -141,7 +136,6 @@
 <footer id="foot"></footer>
 </div>
 <div class="tip" id="tip"></div>
-<div class="peek" id="peek"></div>
 
 <script>
 const DATA = /*__DATA__*/;
@@ -150,11 +144,8 @@ const el = (t, a = {}) => { const e = document.createElementNS(NS, t); for (cons
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const MON = ["янв","фев","мар","апр","мая","июн","июл","авг","сен","окт","ноя","дек"];
 const MONF = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
-const plural = (n,a,b,c) => n%10===1&&n%100!==11?a:(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?b:c);
-const dayw = n => n + " " + plural(n,"день","дня","дней");
 
 const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d; };
-const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const human = d => d.getDate() + " " + MONF[d.getMonth()] + " " + d.getFullYear();
 // a week label spans its Monday to the following Sunday
 const wlabel = ws => {
@@ -169,30 +160,14 @@ const CAT = [
   { id: "on", name: "Открыто, создано на неделе",  color: () => css("--op2"), right: 0 }
 ];
 
-function counts(p, ws, sun) {
-  const c = { co: 0, cn: 0, oo: 0, on: 0 };
-  for (const [cd, sd] of p.k) {
-    if (cd > sun) continue;
-    const newly = cd >= ws;
-    if (sd && sd >= ws && sd <= sun) c[newly ? "cn" : "co"]++;
-    else if (!sd || sd > sun) c[newly ? "on" : "oo"]++;
-  }
-  return c;
-}
-
-// a project belongs to a week if it already existed then and was not closed before it
-const activeIn = (p, ws, sun) => p.cd <= sun && (!p.ed || p.ed >= ws);
-
-// state as of the end of the displayed week
-const pstate = (p, ws, sun) =>
-  !p.ed ? "open" : (p.ed <= sun ? "wk" : "later");
+// project state as of the end of the displayed week, computed by build_week.py
 const STATE = {
   wk:    { n: "закрыт на этой неделе", mark: "solid" },
   later: { n: "был в работе, закрыт позже", mark: "hollow" },
   open:  { n: "открыт", mark: null }
 };
 
-const tip = document.getElementById("tip"), peek = document.getElementById("peek");
+const tip = document.getElementById("tip");
 function showTip(ev, title, rows) {
   tip.innerHTML = "<b>" + title + "</b>" + rows.map(r =>
     '<div class="r' + (r.b ? " strong" : "") + (r.top ? " sep" : "") + '">' +
@@ -209,7 +184,6 @@ function place(node, ev) {
   node.style.left = x + "px"; node.style.top = y + "px";
 }
 const hideTip = () => tip.style.opacity = 0;
-const hidePeek = () => peek.style.opacity = 0;
 
 function barR(x, y, w, h, r) {
   r = Math.min(r, h / 2, w);
@@ -219,85 +193,6 @@ function barL(x, y, w, h, r) {
   r = Math.min(r, h / 2, w);
   return `M${x+w},${y} L${x+r},${y} Q${x},${y} ${x},${y+r} L${x},${y+h-r} Q${x},${y+h} ${x+r},${y+h} L${x+w},${y+h} Z`;
 }
-function barTop(x, y, w, h, r) {
-  r = Math.min(r, w / 2, h);
-  return `M${x},${y+h} L${x},${y+r} Q${x},${y} ${x+r},${y} L${x+w-r},${y} Q${x+w},${y} ${x+w},${y+r} L${x+w},${y+h} Z`;
-}
-function barBot(x, y, w, h, r) {
-  r = Math.min(r, w / 2, h);
-  return `M${x},${y} L${x+w},${y} L${x+w},${y+h-r} Q${x+w},${y+h} ${x+w-r},${y+h} L${x+r},${y+h} Q${x},${y+h} ${x},${y+h-r} Z`;
-}
-
-// the per-day chart from projects.html, shrunk to fit a hover panel
-function peekChart(p) {
-  const days = [];
-  for (const e of p.r) for (let i = 0; i < e[4]; i++) days.push(e);
-  const W = 620;
-  const pitch = Math.max(0.3, Math.min(6, W / days.length));   // sub-pixel is fine: the panel must stay 620 wide
-  const maxUp = Math.max(1, ...days.map(d => d[0] + d[1]));
-  const maxDn = Math.max(1, ...days.map(d => d[2] + d[3]));
-  const unit = Math.max(1, Math.min(7, 150 / maxUp));
-  const upH = maxUp * unit, dnH = maxDn * unit, base = 4 + upH;
-  const hh = p.h || [], hRow = 14, gTop = base + dnH + 6 + (hh.length ? 8 : 0);
-  const w = Math.ceil(days.length * pitch) + 2, h = gTop + hh.length * hRow + 2;
-  const bw = Math.max(0.6, pitch - (pitch > 3 ? 1 : 0));
-
-  const svg = el("svg", { width: w, height: h, viewBox: `0 0 ${w} ${h}` });
-  svg.appendChild(el("line", { x1: 0, y1: base + .5, x2: w, y2: base + .5, stroke: css("--line"), "stroke-width": 1 }));
-  days.forEach((d, i) => {
-    const x = 1 + i * pitch, [oo, no, oc, nc] = d;
-    if (oo) svg.appendChild(el("path", { d: barTop(x, base - oo * unit, bw, oo * unit, 1), fill: css("--op1") }));
-    if (no) svg.appendChild(el("path", { d: barTop(x, base - (oo + no) * unit, bw, no * unit, 1), fill: css("--op2") }));
-    if (oc) svg.appendChild(el("path", { d: barBot(x, base + 1, bw, oc * unit, 1), fill: css("--cl1") }));
-    if (nc) svg.appendChild(el("path", { d: barBot(x, base + 1 + oc * unit, bw, nc * unit, 1), fill: css("--cl2") }));
-  });
-
-  // headings, same x scale: solid once started, dashed while nothing in them is closed
-  hh.forEach((g, i) => {
-    const y = gTop + i * hRow;
-    const x0 = 1 + g.o * pitch, x1 = 1 + (g.e + 1) * pitch;
-    svg.appendChild(el("rect", {
-      x: x0 + .5, y: y + 6, width: Math.max(x1 - x0, 2), height: 5, rx: 2,
-      fill: g.started ? css("--s3") : "none",
-      stroke: g.started ? "none" : css("--s3"),
-      "stroke-width": g.started ? 0 : 1.2,
-      "stroke-dasharray": g.started ? null : "3 2"
-    }));
-    const far = x0 > w * 0.55;
-    const t = el("text", {
-      x: far ? Math.min(x1, w - 2) : x0, y: y + 3.5,
-      "text-anchor": far ? "end" : "start",
-      fill: css("--ink-3"), "font-size": 9
-    });
-    const room = Math.max(6, Math.floor((far ? Math.min(x1, w) : w - x0) / 5));
-    t.textContent = g.t.length > room ? g.t.slice(0, room - 1) + "…" : g.t;
-    svg.appendChild(t);
-  });
-  return svg;
-}
-
-function showPeek(ev, p) {
-  peek.innerHTML = "";
-  const h3 = document.createElement("h3"); h3.textContent = p.t;
-  const m = document.createElement("div"); m.className = "m";
-  peek.appendChild(h3); peek.appendChild(m);
-  if (p.r) {
-    const s = addDays(p.s, 0), e = addDays(p.e, 0);
-    const n = p.r.reduce((a, x) => a + x[4], 0);
-    m.textContent = human(s) + " - " + human(e) + ", " + dayw(n) + ", задач " + p.k.length +
-      (p.ed ? " | закрыт " + human(addDays(p.ed, 0)) : " | открыт") +
-      (p.h && p.h.length ? " | заголовков " + p.h.length : "");
-    peek.appendChild(peekChart(p));
-  } else {
-    m.textContent = "задач " + p.k.length;
-    const d = document.createElement("div");
-    d.className = "none";
-    d.textContent = "Ни одна задача не закрыта - подневного графика нет.";
-    peek.appendChild(d);
-  }
-  place(peek, ev);
-}
-
 let week = DATA.current;
 
 function niceTicks(max, count) {
@@ -313,11 +208,10 @@ function niceTicks(max, count) {
 
 const BACK = 55;                                  // weeks behind the current one for the corridor
 
-// closures per day index for the whole history, every task with a stop date,
-// including those filed in no project and no area
-const CLOSED = DATA.burn.all;
+// closures per day from the first week to today, every to-do with a stop date
+const CLOSED = DATA.days.closed;
 
-const DAY0 = addDays(DATA.burn.s, 0);
+const DAY0 = addDays(DATA.days.s, 0);
 const idxOf = iso => Math.round((addDays(iso, 0) - DAY0) / 86400000);
 
 // closures per weekday for the week starting at `startIso`, cut off at today
@@ -460,26 +354,10 @@ function drawDays() {
 // so the shape of different weeks can be compared.
 function drawAreas() {
   const node = document.getElementById("areas");
-  const names = DATA.burn.areas.slice();
-  let noArea = names.indexOf("Без области");
-  if (noArea < 0) noArea = names.push("Без области") - 1;
+  const spokes = DATA.wk[week].a;                 // [title, closed] in a fixed order
+  const names = spokes.map(x => x[0]), byArea = spokes.map(x => x[1]);
   const n = names.length;
-
-  // closures and last edits per area for the week that starts `back` weeks
-  // before the shown one. Things stores only the latest edit of a task, so for
-  // past weeks the edit count misses tasks edited again later.
-  const closedIn = back => {
-    const lo = idxOf(week) - 7 * back;
-    const hi = Math.min(lo + 6, idxOf(DATA.today));
-    const out = new Array(n).fill(0), mod = new Array(n).fill(0);
-    for (const [c, x, a, m] of DATA.burn.k) {
-      if (c > hi) break;
-      if (x !== null && x >= lo && x <= hi) out[a]++;
-      if (m !== null && m >= lo && m <= hi) mod[a]++;
-    }
-    return { counts: out, total: out.reduce((s, v) => s + v, 0), mod };
-  };
-  const { counts: byArea, total } = closedIn(0);
+  const total = byArea.reduce((a, v) => a + v, 0);
 
   if (!total) {
     node.innerHTML = '<div class="empty">На этой неделе ничего не закрыто.</div>';
@@ -581,13 +459,7 @@ function drawAreas() {
 // was added and already done, and what was done from earlier weeks
 function drawFlow() {
   const node = document.getElementById("flow");
-  const lo = idxOf(week), hi = Math.min(lo + 6, idxOf(DATA.today));
-  let newOpen = 0, newDone = 0, oldDone = 0;
-  for (const [c, x] of DATA.burn.k) {
-    if (c > hi) break;
-    if (c >= lo) (x !== null && x <= hi) ? newDone++ : newOpen++;
-    else if (x !== null && x >= lo && x <= hi) oldDone++;
-  }
+  const [newOpen, newDone, oldDone] = DATA.wk[week].f;
   const segs = [
     { n: newOpen, color: css("--op2"), name: "Новые не закрытые задачи" },
     { n: newDone, color: css("--cl2"), name: "Новые закрытые задачи" },
@@ -641,16 +513,11 @@ function drawFlow() {
 }
 
 function draw() {
-  const ws = week, sun = isoOf(addDays(week, 6));
-  let ps = DATA.projects
-    .filter(p => activeIn(p, ws, sun))
-    .filter(p => p.sd !== 2)                      // Someday projects stay out
-    .map(p => ({ p, c: counts(p, ws, sun) }))
-    .filter(x => x.c.co + x.c.cn + x.c.oo + x.c.on > 0);
-
+  // [title, state, closed date, co, cn, oo, on]; Someday and canceled projects
+  // are already left out by build_week.py
+  const ps = DATA.wk[week].p.map(([t, st, ed, co, cn, oo, on]) => ({ p: { t, st, ed }, c: { co, cn, oo, on } }));
   // most open tasks first, ties by name
   ps.sort((a, b) => (b.c.oo + b.c.on) - (a.c.oo + a.c.on) || a.p.t.localeCompare(b.p.t));
-
 
   document.getElementById("wlabel").textContent = wlabel(week);
   document.getElementById("wsel").value = week;
@@ -706,7 +573,7 @@ function draw() {
       t.textContent = x.c.oo + x.c.on; svg.appendChild(t);
     }
 
-    const st = pstate(x.p, ws, sun);
+    const st = x.p.st;
     if (STATE[st].mark) {
       svg.appendChild(el("rect", {
         x: labW - 20, y: yb + 4, width: 8, height: 8, rx: 2,
@@ -718,8 +585,6 @@ function draw() {
     const lab = el("text", { class: "rowlab", x: 4, y: yb + barH - 3 });
     const room = narrow ? 15 : 26;
     lab.textContent = x.p.t.length > room ? x.p.t.slice(0, room - 1) + "…" : x.p.t;
-    lab.addEventListener("mouseenter", ev => showPeek(ev, x.p));
-    lab.addEventListener("mouseleave", hidePeek);
     svg.appendChild(lab);
 
     const hit = el("rect", { x: labW, y: y, width: W - labW, height: rowH, fill: "transparent" });
@@ -750,13 +615,11 @@ addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTim
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
 
 document.getElementById("foot").innerHTML =
-  "Проект попадает в неделю, если к её концу уже существовал и не был закрыт до её начала. Отменённые проекты " +
-  "в выгрузку не входят вовсе, их задачи при этом учитываются в колесе баланса и в распределении закрытий. Строки без единой задачи " +
-  "в неделе скрыты, порядок строк - по числу открытых задач.<br>" +
-  "Проекты в Someday не показаны. Это текущее состояние проекта: истории переходов в базе Things нет, поэтому " +
-  "для прошлых недель признак говорит о том, где проект лежит сейчас, а не где лежал тогда.<br>" +
-  "Неделя с понедельника по воскресенье. Область Templates исключена. " +
-  "Всего в выгрузке " + DATA.projects.length + " проектов, недель " + DATA.weeks.length + ".";
+  "Проект попадает в неделю, если к её концу уже существовал и не был закрыт до её начала. Строки без единой задачи " +
+  "в неделе скрыты, порядок строк - по числу открытых задач. Отменённые проекты и проекты в Someday не показаны.<br>" +
+  "Отменённые задачи считаются закрытыми. Задача относится к последней известной области: своей или своего проекта.<br>" +
+  "Прошлые недели берутся из истории (history.sqlite) и не меняются, текущая неделя считается заново при каждом " +
+  "обновлении. Неделя с понедельника по воскресенье, недель в истории " + DATA.frozen + ".";
 
 draw();
 
