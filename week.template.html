@@ -9,7 +9,7 @@
     color-scheme: light;
     --surface:#fcfcfb; --card:#ffffff; --border:#e6e5e1; --line:#3a3936;
     --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#83817b;
-    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6; --touch:#bdbbb5;
     --cl1:#1c5cab; --cl2:#6da7ec; --op1:#b8322f; --op2:#f0918e; --grid-b:#eceae6;
   }
   @media (prefers-color-scheme: dark) {
@@ -17,7 +17,7 @@
       color-scheme: dark;
       --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
       --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
-      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56;
       --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
     }
   }
@@ -25,7 +25,7 @@
     color-scheme: dark;
     --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
     --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
-    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56;
       --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
   }
   * { box-sizing:border-box; }
@@ -192,16 +192,6 @@ function barL(x, y, w, h, r) {
 }
 let week = DATA.current;
 
-function niceTicks(max, count) {
-  if (max <= 0) return [0];
-  const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
-  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw) || 10 * mag;
-  const top = Math.ceil(max / step) * step, out = [];
-  for (let v = 0; v <= top + step * 0.001; v += step) out.push(+v.toFixed(6));
-  return out;
-}
-
-
 
 const BACK = 55;                                  // weeks behind the current one for the corridor
 
@@ -347,16 +337,22 @@ function drawDays() {
 }
 
 // balance wheel: one spoke per area, distance from the centre is the number of
-// tasks closed in the area this week. Spokes keep a fixed (alphabetical) order,
-// so the shape of different weeks can be compared.
+// tasks closed in the area this week. The outer line is the number of tasks
+// touched (created, edited or closed); weeks from before it was collected have
+// none. Spokes keep a fixed (alphabetical) order, so the shape of different
+// weeks can be compared.
+const AREA_TOP = 30;                             // tasks at the outer ring of the wheel
 function drawAreas() {
   const node = document.getElementById("areas");
-  const spokes = DATA.wk[week].a;                 // [title, closed] in a fixed order
+  const spokes = DATA.wk[week].a;                 // [title, closed, touched or null] in a fixed order
   const names = spokes.map(x => x[0]), byArea = spokes.map(x => x[1]);
+  const hasTouched = spokes.some(x => x[2] != null);
+  const touched = spokes.map(x => x[2] || 0);
   const n = names.length;
   const total = byArea.reduce((a, v) => a + v, 0);
+  const totalTouched = touched.reduce((a, v) => a + v, 0);
 
-  if (!total) {
+  if (!total && !totalTouched) {
     node.innerHTML = '<div class="empty">На этой неделе ничего не закрыто.</div>';
     return;
   }
@@ -394,8 +390,9 @@ function drawAreas() {
   const H = 2 * (R + gap + lineH + 6), cx = W / 2, cy = H / 2;
   svg.setAttribute("height", H); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
-  const ticks = niceTicks(Math.max(...byArea), 4);
-  const top = ticks[ticks.length - 1] || 1;
+  // the scale is the same for every week, so the wheels of different weeks can
+  // be compared; a value above the top simply runs out of the outer ring
+  const ticks = [10, 20, AREA_TOP], top = AREA_TOP;
   const pt = (i, v) => [cx + Math.cos(ang(i)) * R * v / top, cy + Math.sin(ang(i)) * R * v / top];
 
   // rings at the tick values, drawn as polygons to match the spokes
@@ -415,6 +412,14 @@ function drawAreas() {
     back.appendChild(el("line", { x1: cx, y1: cy, x2: x, y2: y, stroke: css("--grid-b"), "stroke-width": 1 }));
   });
 
+  if (hasTouched) {
+    const outer = names.map((_, i) => pt(i, touched[i]));
+    back.appendChild(el("polygon", {
+      points: outer.map(p => p.join(",")).join(" "),
+      fill: "none", stroke: css("--touch"), "stroke-width": 2, "stroke-linejoin": "round"
+    }));
+  }
+
   const shape = names.map((_, i) => pt(i, byArea[i]));
   back.appendChild(el("polygon", {
     points: shape.map(p => p.join(",")).join(" "),
@@ -423,7 +428,9 @@ function drawAreas() {
 
   names.forEach((name, i) => {
     const [x, y] = shape[i];
-    back.appendChild(el("circle", { cx: x, cy: y, r: 4, fill: css("--cl1"), stroke: css("--card"), "stroke-width": 2 }));
+    // small marks, and none at zero: on a quiet week they would pile up in the centre
+    if (byArea[i]) back.appendChild(
+      el("circle", { cx: x, cy: y, r: 2.5, fill: css("--cl1"), stroke: css("--card"), "stroke-width": 1 }));
 
     // label just outside the outer ring, anchored away from the centre
     const c = Math.cos(ang(i)), s = Math.sin(ang(i));
@@ -439,8 +446,9 @@ function drawAreas() {
 
     const tipRows = [
       { c: css("--cl1"), k: "Закрыто за неделю", v: byArea[i], b: true },
-      { k: "Доля от всех закрытых", v: Math.round(byArea[i] / total * 100) + "%" }
+      { k: "Доля от всех закрытых", v: (total ? Math.round(byArea[i] / total * 100) : 0) + "%" }
     ];
+    if (hasTouched) tipRows.push({ c: css("--touch"), k: "Затронуто за неделю", v: touched[i], top: true });
     const hit = el("circle", { cx: x, cy: y, r: 14, fill: "transparent" });
     front.appendChild(hit);
     for (const target of [lab, hit]) {
@@ -449,6 +457,16 @@ function drawAreas() {
     }
   });
 
+  if (hasTouched) {
+    const leg = document.createElement("div");
+    leg.className = "legend";
+    for (const [color, name, v] of [[css("--cl1"), "Закрыто", total], [css("--touch"), "Затронуто", totalTouched]]) {
+      const item = document.createElement("span");
+      item.innerHTML = `<i style="background:${color}"></i>${name}: <b>${v}</b>`;
+      leg.appendChild(item);
+    }
+    node.appendChild(leg);
+  }
 }
 
 

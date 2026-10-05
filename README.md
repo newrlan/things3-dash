@@ -18,7 +18,10 @@ current one.
    binomial fitted on up to 55 previous full weeks. The highlighted cell is the
    selected week. All closures count, including tasks outside projects and areas.
 2. **Balance by area.** A wheel with one spoke per area: how many tasks were
-   closed in each area during the week.
+   closed in each area during the week. The outer line shows how many tasks
+   were touched: created, edited or closed, tasks still in the Inbox left out.
+   It is collected from the week the feature was first run; earlier weeks show
+   closures only.
 3. **Added and done in the week.** One bar: tasks added this week and still
    open, tasks added this week and closed, tasks added earlier and closed.
 4. **Projects of the week.** One row per active project: closed tasks to the
@@ -31,7 +34,9 @@ Past weeks come from a local history, `history.sqlite`, not from the current
 state of Things. Every complete week is frozen once, at the first refresh after
 it ends, and never changes after that; the running week is computed anew on
 every refresh. Areas, projects and tasks deleted in Things later stay in the
-weeks they belong to, under their last known names. On the first run the
+weeks they belong to, under their last known names. Touched tasks are noted at
+every refresh, because Things keeps only the last modification date of a task:
+the more often you refresh, the more complete this number is. On the first run the
 history is filled from the current database. The schema and its rules are in
 [docs/history-schema.md](docs/history-schema.md).
 
@@ -95,6 +100,8 @@ is opened as a local file.
 - To-do titles are not read. Only project, heading and area titles leave
   the database; project and area titles are stored in `history.sqlite` and
   embedded in `week.html`.
+- `history.sqlite` keeps the identifiers (not the titles) of the to-dos touched
+  in the running week; they are removed when the week is frozen.
 - `week.html` and `history.sqlite` hold your personal data and are listed in
   `.gitignore`. Do not publish them.
 - `history.sqlite` is the only copy of past weeks once Things has forgotten

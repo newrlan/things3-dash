@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Balance by area: an outer line with the tasks touched in the week (created,
+  edited or closed, tasks still in the Inbox left out). Collected at every
+  refresh starting from the week of the first run; earlier weeks show closures
+  only.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added
