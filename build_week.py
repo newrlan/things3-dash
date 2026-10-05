@@ -157,7 +157,7 @@ while m <= wstart:
     weeks.append(m.isoformat())
     m += timedelta(days=7)
 
-# ---- burndown: every task that belongs to a project or sits in an area ----
+# ---- per-task days for the weekly views: every to-do outside Templates ----
 tpl_area = {u for u, t in areas.items() if t == "Templates"}
 tpl_proj = {r["uuid"] for r in rows if r["type"] == "1" and r["area"] in tpl_area}
 
@@ -170,12 +170,11 @@ for r in rows:
     pu = proj_of(r)
     if pu in tpl_proj or r["area"] in tpl_area:
         continue
-    if not pu and not r["area"]:
-        continue                       # loose task: no project, no area
     c, sd2 = d(r["creationDate"]), stop_of(r)
     if not c:
         continue
-    # the task's own area, else the area its project sits in
+    # the task's own area, else the area its project sits in; a task with neither
+    # (loose, or in a project without an area) falls under "Без области"
     au = r["area"] or (proj_area.get(pu, "") if pu else "")
     burn.append((c, sd2, areas.get(au, "") or "Без области", d(r["userModificationDate"])))
 
@@ -232,9 +231,9 @@ print("задач:", sum(len(p["k"]) for p in projects), "| недель:", len(
 print("текущая неделя:", wstart.isoformat())
 print("заголовков:", sum(len(p.get("h", [])) for p in projects),
       "| начатых:", sum(1 for p in projects for h in p.get("h", []) if h["started"]))
-print("сжигание: задач", len(burn), "| пар", len(pairs), "| с", b0.isoformat())
+print("задач в недельных данных:", len(burn), "| с", b0.isoformat())
 print("все закрытия, включая задачи вне проектов и областей:", sum(all_by_day),
-      "| только с проектом или областью:", sum(1 for _, x, _, _ in pairs if x is not None))
+      "| из них с датой создания:", sum(1 for _, x, _, _ in pairs if x is not None))
 import collections as _c
 for a, n in _c.Counter(a for _, _, a, _ in burn).most_common():
     print(f"   {a:<16}{n}")

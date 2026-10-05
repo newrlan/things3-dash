@@ -91,6 +91,10 @@
   .peek .m { font-size:11px; color:var(--ink-3); margin-bottom:9px; font-variant-numeric:tabular-nums; }
   .peek .none { font-size:12px; color:var(--ink-3); }
 
+  .legend { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:12px; font-size:12px; color:var(--ink-2); }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .legend i { width:10px; height:10px; border-radius:2px; }
+  .legend b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
   .empty { color:var(--ink-3); font-size:13px; padding:20px 2px; }
   footer { margin-top:24px; font-size:12px; color:var(--ink-3); line-height:1.7; }
 </style>
@@ -125,10 +129,8 @@
 </div>
 
 <div class="card">
-  <div class="bhd">
-    <h2>Сжигание задач за неделю</h2>
-  </div>
-  <div class="chart" id="burn"></div>
+  <div class="bhd"><h2>Добавлено и сделано за неделю</h2></div>
+  <div class="chart" id="flow"></div>
 </div>
 
 <div class="card">
@@ -298,13 +300,6 @@ function showPeek(ev, p) {
 
 let week = DATA.current;
 
-const BCAT = [
-  { id: "oo", name: "Открыта, создана раньше",     color: () => css("--op1"), up: 1 },
-  { id: "no", name: "Создана в этот день, открыта", color: () => css("--op2"), up: 1 },
-  { id: "oc", name: "Закрыта, создана раньше",     color: () => css("--cl1"), up: 0 },
-  { id: "nc", name: "Создана и закрыта в этот день", color: () => css("--cl2"), up: 0 }
-];
-
 function niceTicks(max, count) {
   if (max <= 0) return [0];
   const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
@@ -460,83 +455,6 @@ function drawDays() {
   node.innerHTML = ""; node.appendChild(svg);
 }
 
-function drawBurn() {
-  const b0 = DATA.burn.s;
-  const lo = Math.round((addDays(week, 0) - addDays(b0, 0)) / 86400000);
-  const endIso = [isoOf(addDays(week, 6)), DATA.today].sort()[0];
-  const endIdx = Math.round((addDays(endIso, 0) - addDays(b0, 0)) / 86400000);
-  const n = endIdx - lo + 1;
-  const node = document.getElementById("burn");
-
-  // above: added this week and still open at the end of the day
-  // below: closed on the day; light means it came from this week's own intake,
-  // so the light part mirrors exactly what left the upper stack
-  const openOld = new Array(n).fill(0), openNew = new Array(n).fill(0);
-  const doneOld = new Array(n).fill(0), doneNew = new Array(n).fill(0);
-  for (const [c, x] of DATA.burn.k) {
-    if (c > endIdx) break;
-    if (c >= lo) {
-      for (let i = c; i <= endIdx; i++) {
-        if (x !== null && x <= i) break;
-        (i === c ? openNew : openOld)[i - lo]++;
-      }
-    }
-    if (x !== null && x >= lo && x <= endIdx) (c >= lo ? doneNew : doneOld)[x - lo]++;
-  }
-
-  const upTot = openOld.map((v, d) => v + openNew[d]);
-  const dnTot = doneOld.map((v, d) => v + doneNew[d]);
-  const maxUp = Math.max(1, ...upTot), maxDn = Math.max(1, ...dnTot);
-
-  const W = Math.max(300, node.clientWidth || 900);
-  const padL = 44, padR = 12, padT = 14, labH = 28;
-  const iw = W - padL - padR;
-  const unit = Math.min(210 / maxUp, 210 / maxDn);       // one task, same height both ways
-  const upH = maxUp * unit, dnH = maxDn * unit;
-  const base = padT + upH, H = base + dnH + labH;
-  const step = iw / n, bw = Math.min(78, step - 16);
-
-  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
-  const mark = (v, y) => {
-    svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: y, y2: y,
-      stroke: css("--grid-b"), "stroke-width": 1 }));
-    const lb = el("text", { class: "val", x: padL - 8, y: y + 4, "text-anchor": "end" });
-    lb.textContent = v; svg.appendChild(lb);
-  };
-  niceTicks(maxUp, 3).forEach(t => t && mark(t, base - t * unit));
-  niceTicks(maxDn, 3).forEach(t => t && mark(t, base + t * unit));
-
-  for (let d = 0; d < n; d++) {
-    const x = padL + d * step + (step - bw) / 2;
-    const oo = openOld[d], on = openNew[d], co = doneOld[d], cn = doneNew[d];
-    if (oo) svg.appendChild(el("path", { d: barTop(x, base - oo * unit, bw, oo * unit, on ? 0 : 3), fill: css("--op1") }));
-    if (on) svg.appendChild(el("path", { d: barTop(x, base - (oo + on) * unit, bw, on * unit - (oo ? 1 : 0), 3), fill: css("--op2") }));
-    if (co) svg.appendChild(el("path", { d: barBot(x, base + 1, bw, co * unit, cn ? 0 : 3), fill: css("--cl1") }));
-    if (cn) svg.appendChild(el("path", { d: barBot(x, base + 1 + co * unit + (co ? 1 : 0), bw, cn * unit - (co ? 1 : 0), 3), fill: css("--cl2") }));
-
-    const day = addDays(b0, lo + d);
-    const lab = el("text", { class: "val", x: x + bw / 2, y: base + dnH + 18, "text-anchor": "middle" });
-    lab.textContent = ["вс","пн","вт","ср","чт","пт","сб"][day.getDay()] + " " + day.getDate();
-    svg.appendChild(lab);
-
-    const hit = el("rect", { x: padL + d * step, y: 0, width: step, height: base + dnH, fill: "transparent" });
-    hit.addEventListener("mousemove", ev => showTip(ev, human(day), [
-      { c: css("--op1"), k: "Открыто, добавлено раньше на неделе", v: oo },
-      { c: css("--op2"), k: "Открыто, добавлено в этот день", v: on },
-      { k: "Всего открыто из недельных", v: upTot[d], b: true },
-      { c: css("--cl1"), k: "Закрыто, создано до недели", v: co, top: true },
-      { c: css("--cl2"), k: "Закрыто из добавленных на неделе", v: cn },
-      { k: "Всего закрыто за день", v: dnTot[d], b: true }
-    ]));
-    hit.addEventListener("mouseleave", hideTip);
-    svg.appendChild(hit);
-  }
-
-  svg.appendChild(el("line", { x1: padL - 4, y1: base + .5, x2: W - padR, y2: base + .5,
-    stroke: css("--line"), "stroke-width": 1 }));
-  node.innerHTML = ""; node.appendChild(svg);
-}
-
 // balance wheel: one spoke per area, distance from the centre is the number of
 // tasks closed in the area this week. Spokes keep a fixed (alphabetical) order,
 // so the shape of different weeks can be compared.
@@ -559,13 +477,7 @@ function drawAreas() {
       if (x !== null && x >= lo && x <= hi) out[a]++;
       if (m !== null && m >= lo && m <= hi) mod[a]++;
     }
-    // "Без области" also takes the tasks with neither a project nor an area:
-    // they are not in DATA.burn.k, so they are the rest of the all-tasks totals
-    let all = 0, allMod = 0;
-    for (let i = lo; i <= hi; i++) { all += CLOSED[i] || 0; allMod += DATA.burn.mod[i] || 0; }
-    out[noArea] += all - out.reduce((s, v) => s + v, 0);
-    mod[noArea] += allMod - mod.reduce((s, v) => s + v, 0);
-    return { counts: out, total: all, mod };
+    return { counts: out, total: out.reduce((s, v) => s + v, 0), mod };
   };
   const { counts: byArea, total } = closedIn(0);
 
@@ -665,6 +577,69 @@ function drawAreas() {
 }
 
 
+// one stacked bar for the shown week: what was added and is still open, what
+// was added and already done, and what was done from earlier weeks
+function drawFlow() {
+  const node = document.getElementById("flow");
+  const lo = idxOf(week), hi = Math.min(lo + 6, idxOf(DATA.today));
+  let newOpen = 0, newDone = 0, oldDone = 0;
+  for (const [c, x] of DATA.burn.k) {
+    if (c > hi) break;
+    if (c >= lo) (x !== null && x <= hi) ? newDone++ : newOpen++;
+    else if (x !== null && x >= lo && x <= hi) oldDone++;
+  }
+  const segs = [
+    { n: newOpen, color: css("--op2"), name: "Новые не закрытые задачи" },
+    { n: newDone, color: css("--cl2"), name: "Новые закрытые задачи" },
+    { n: oldDone, color: css("--cl1"), name: "Старые закрытые задачи" }
+  ];
+  const sum = newOpen + newDone + oldDone;
+  if (!sum) {
+    node.innerHTML = '<div class="empty">На этой неделе ничего не добавлено и не сделано.</div>';
+    return;
+  }
+
+  const W = Math.max(260, node.clientWidth || 900);
+  const barH = 22;
+  const svg = el("svg", { width: W, height: barH, viewBox: `0 0 ${W} ${barH}` });
+  node.innerHTML = ""; node.appendChild(svg);
+
+  // segments share the width by count; a 2px gap of card colour between them
+  const shown = segs.filter(g => g.n);
+  const unit = (W - 2 * (shown.length - 1)) / sum;
+  let x = 0;
+  shown.forEach((g, k) => {
+    const w = g.n * unit;
+    const first = k === 0, last = k === shown.length - 1, r = 4;
+    const d = first && last ? barL(x, 0, w / 2, barH, r) + barR(x + w / 2, 0, w / 2, barH, r)
+      : first ? barL(x, 0, w, barH, r) : last ? barR(x, 0, w, barH, r)
+      : `M${x},0 h${w} v${barH} h${-w} Z`;
+    svg.appendChild(el("path", { d, fill: g.color }));
+    const hit = el("rect", { x, y: 0, width: w, height: barH, fill: "transparent" });
+    hit.addEventListener("mousemove", ev => showTip(ev, g.name, [
+      { c: g.color, k: "Задач", v: g.n, b: true },
+      { k: "Доля", v: Math.round(g.n / sum * 100) + "%" }
+    ]));
+    hit.addEventListener("mouseleave", hideTip);
+    svg.appendChild(hit);
+    x += w + 2;
+  });
+
+  // legend with the counts, in the same order as the bar; wraps on narrow screens
+  const leg = document.createElement("div");
+  leg.className = "legend";
+  for (const g of segs) {
+    const it = document.createElement("span");
+    const sw = document.createElement("i");
+    sw.style.background = g.color;
+    it.appendChild(sw);
+    it.appendChild(document.createTextNode(g.name + ": "));
+    const b = document.createElement("b"); b.textContent = g.n; it.appendChild(b);
+    leg.appendChild(it);
+  }
+  node.appendChild(leg);
+}
+
 function draw() {
   const ws = week, sun = isoOf(addDays(week, 6));
   let ps = DATA.projects
@@ -686,8 +661,8 @@ function draw() {
   const node = document.getElementById("chart");
   if (!ps.length) {
     node.innerHTML = '<div class="empty">На этой неделе активных проектов не было.</div>';
-    drawBurn();
     drawAreas();
+    drawFlow();
     drawDays();
     return;
   }
@@ -756,8 +731,8 @@ function draw() {
   });
 
   node.innerHTML = ""; node.appendChild(svg);
-  drawBurn();
   drawAreas();
+  drawFlow();
   drawDays();
 }
 
@@ -776,7 +751,7 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
 
 document.getElementById("foot").innerHTML =
   "Проект попадает в неделю, если к её концу уже существовал и не был закрыт до её начала. Отменённые проекты " +
-  "в выгрузку не входят вовсе, их задачи при этом учитываются в диаграмме сжигания. Строки без единой задачи " +
+  "в выгрузку не входят вовсе, их задачи при этом учитываются в колесе баланса и в распределении закрытий. Строки без единой задачи " +
   "в неделе скрыты, порядок строк - по числу открытых задач.<br>" +
   "Проекты в Someday не показаны. Это текущее состояние проекта: истории переходов в базе Things нет, поэтому " +
   "для прошлых недель признак говорит о том, где проект лежит сейчас, а не где лежал тогда.<br>" +
