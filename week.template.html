@@ -851,6 +851,9 @@ function drawYear() {
   // byStart: the names stand for the start of the project, so the card leads with it
   function drawNames(layout, yOf, lineFrom, lineTo, byStart) {
     for (const wk of layout.weeks) {
+      const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(wk.deepest),
+        stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" });
+      drops.appendChild(drop);
       for (const l of wk.labels) {
         const p = l.p;
         const tone = css(!p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
@@ -860,17 +863,20 @@ function drawYear() {
           "text-anchor": l.anchor, fill: tone }, halo));
         lb.textContent = l.text;
         lb.style.cursor = "default";
-        lb.addEventListener("mouseenter", () => showSpan(p));
+        // the name under the pointer and the line of its week turn bold
+        lb.addEventListener("mouseenter", () => {
+          showSpan(p); lb.setAttribute("font-weight", 700); drop.setAttribute("stroke-width", 2);
+        });
         const began = { k: "Начат", v: human(addDays(p.from, 0)), b: byStart };
         const ended = p.to ? { k: p.st === 3 ? "Завершён" : "Отменён", v: human(addDays(p.to, 0)), b: !byStart }
           : { c: css(p.someday ? "--op2" : "--op1"), k: p.someday ? "В работе, Someday" : "В работе", v: "", b: !byStart };
         lb.addEventListener("mousemove", ev => showTip(ev, p.title,
           (byStart ? [began, ended] : [ended, began]).concat([{ k: "Длительность", v: lifeSpan(p.from, p.to || DATA.today) }])));
-        lb.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; });
+        lb.addEventListener("mouseleave", () => {
+          hideTip(); span.innerHTML = ""; lb.setAttribute("font-weight", 500); drop.setAttribute("stroke-width", 1);
+        });
         names.appendChild(lb);
       }
-      drops.appendChild(el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(wk.deepest),
-        stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" }));
     }
   }
   const top = H + 6;
