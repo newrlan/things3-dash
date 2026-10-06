@@ -40,6 +40,11 @@ projects are not shown. Hovering a name marks the
 weeks the project lived through, from its first completed task (or its
 creation, if no task was completed) to its closing.
 
+The "year against year" card compares the shown year with the three before it:
+running totals by week of closed tasks (tasks without an area left out), of
+started projects and of completed projects. A project starts on the day its
+first task was completed.
+
 ## History
 
 Past weeks come from a local history, `history.sqlite`, not from the current

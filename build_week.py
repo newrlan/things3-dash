@@ -401,11 +401,9 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
     return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed], "p": rows}
 
 
-def closed_projects(con, tasks):
-    """Closed projects for the year tab: [title, closing date, status, start date].
-    A project starts on the day its first to-do was completed; one without a
-    completed to-do starts on the day it was created. Copies of repeating
-    projects stay out."""
+def project_starts(con, tasks):
+    """{project uuid: start date}. A project starts on the day its first to-do was
+    completed; one without a completed to-do has not started."""
     # the exact day while the to-dos are in Things, else the week kept in the history
     started = dict(con.execute("""SELECT project_uuid, MIN(week_start) FROM project_week
                                   WHERE closed_old_completed + closed_new_completed > 0 GROUP BY 1"""))
@@ -414,10 +412,23 @@ def closed_projects(con, tasks):
         if t["s"] and not t["canceled"] and t["s"] <= TODAY:
             live[t["project"]] = min(t["s"], live.get(t["project"], t["s"]))
     started.update({u: iso(day) for u, day in live.items()})
-    return [[t, s, st, min(started.get(u, c), s)] for u, t, c, s, st in con.execute("""
-                SELECT project_uuid, title, created, closed, status FROM project
-                WHERE closed IS NOT NULL AND status IN (2, 3) AND NOT repeating
-                ORDER BY closed, title""")]
+    return started
+
+
+def year_projects(con, tasks):
+    """Projects for the year tab, copies of repeating projects left out:
+    closed ones as [title, closing date, status, start date], where a project
+    without a completed to-do starts on the day it was created, and the start
+    dates of all the projects that have started."""
+    started = project_starts(con, tasks)
+    closed, starts = [], []
+    for u, t, c, s, st in con.execute("""SELECT project_uuid, title, created, closed, status FROM project
+                                         WHERE NOT repeating ORDER BY closed, title"""):
+        if u in started:
+            starts.append(min(started[u], s or started[u]))
+        if s and st in (2, 3):
+            closed.append([t, s, st, min(started.get(u, c), s)])
+    return closed, sorted(starts)
 
 
 def build_payload(con, flows, pweeks, alive, tasks):
@@ -455,9 +466,10 @@ def build_payload(con, flows, pweeks, alive, tasks):
     for w in weeks:
         for (day, _), v in week_flow[w]:
             closed[(date.fromisoformat(day) - first).days] += v[1] + v[2] + v[3] + v[4]
+    closed_pr, started_pr = year_projects(con, tasks)
     return {"weeks": weeks, "current": iso(current), "today": iso(TODAY),
             "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen),
-            "pr": closed_projects(con, tasks)}
+            "pr": closed_pr, "ps": started_pr}
 
 
 def main():

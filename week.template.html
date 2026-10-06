@@ -44,6 +44,9 @@
   .top { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
   h1 { font-size:25px; font-weight:640; letter-spacing:-.02em; margin:0; }
   .top #refresh { margin-left:auto; }
+  .duo { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:24px; }
+  @media (max-width: 1000px) { .duo { grid-template-columns:minmax(0, 1fr); } }
+  .sub { font-size:12px; color:var(--ink-2); margin-bottom:6px; }
   .tabs { display:flex; gap:4px; margin-left:8px; }
   .tabs button.on { background:var(--card); border-color:var(--ink-3); font-weight:600; }
 
@@ -152,6 +155,15 @@
 <div class="card">
   <div class="bhd"><h2>Открытые задачи с начала года</h2></div>
   <div class="chart" id="yflow"></div>
+</div>
+
+<div class="card">
+  <div class="bhd"><h2>Год к году</h2></div>
+  <div class="duo">
+    <div><div class="sub">Закрыто задач с начала года</div><div class="chart" id="yoy-tasks"></div></div>
+    <div><div class="sub">Открыто проектов с начала года</div><div class="chart" id="yoy-started"></div></div>
+    <div><div class="sub">Завершено проектов с начала года</div><div class="chart" id="yoy-projects"></div></div>
+  </div>
 </div>
 </div>
 </div>
@@ -684,7 +696,11 @@ function lifeSpan(from, to) {
   let months = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
   while (months > 0 && after(months) > b) months--;
   const days = Math.round((b - after(months)) / 864e5);
-  return months > 0 ? months + " мес." + (days ? " " + days + " дн." : "") : days + " дн.";
+  if (!months) return days + " дн.";
+  const y = Math.floor(months / 12), m = months % 12;
+  // "1 г.", "4 г.", but "5 л." and "11 л."
+  const yy = y % 10 >= 1 && y % 10 <= 4 && (y % 100 < 11 || y % 100 > 14) ? " г." : " л.";
+  return [y ? y + yy : "", m ? m + " мес." : "", days ? days + " дн." : ""].filter(Boolean).join(" ");
 }
 const mondayOf = iso => isoOf(addDays(iso, -((addDays(iso, 0).getDay() + 6) % 7)));
 const CLOSED_IN = {};                             // {week start: [[title, closing date, status, start date]]}
@@ -692,6 +708,8 @@ for (const p of DATA.pr) {
   const ws = mondayOf(p[1]);
   (CLOSED_IN[ws] = CLOSED_IN[ws] || []).push(p);
 }
+const STARTED_IN = {};                            // {week start: projects started in the week}
+for (const d of DATA.ps) STARTED_IN[mondayOf(d)] = (STARTED_IN[mondayOf(d)] || 0) + 1;
 function drawYear() {
   const node = document.getElementById("yflow");
   document.getElementById("ylabel").textContent = year;
@@ -699,6 +717,11 @@ function drawYear() {
   document.getElementById("yprev").disabled = year <= YEARS[0];
   document.getElementById("ynext").disabled = year >= YEARS[YEARS.length - 1];
   document.getElementById("ytoday").disabled = year === yearOf(DATA.current);
+  // tasks with an area, as in the chart above; projects by their first completed
+  // task and by their completion, repeating ones left out
+  drawYoY("yoy-tasks", ws => DATA.wk[ws] ? DATA.wk[ws].g[1] : 0);
+  drawYoY("yoy-started", ws => STARTED_IN[ws] || 0);
+  drawYoY("yoy-projects", ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 3).length);
 
   let added = 0, closed = 0;
   const slots = weeksOf(year).map(ws => {
@@ -838,7 +861,7 @@ function drawYear() {
   for (const [color, name, v] of [[css("--cl2"), "Выше предыдущей недели"], ["dash", "Уровень начала года"],
                                   [null, "Добавлено", added], [null, "Закрыто", closed],
                                   [null, "Запас к началу года", signed(added - closed)],
-                                  [null, "Проектов завершено", done], [null, "отменено (серым)", dropped]]) {
+                                  [null, "Проектов завершено", done], [null, "отменено", dropped]]) {
     const it = document.createElement("span");
     if (color) {
       const sw = document.createElement("i");
@@ -851,6 +874,74 @@ function drawYear() {
     leg.appendChild(it);
   }
   node.appendChild(leg);
+}
+
+// year against year: a running total by week of the year, the shown year over
+// the three before it. The shown year is the strong line, earlier years fade
+// with age; every line is named at its end.
+function drawYoY(id, perWeek) {
+  const node = document.getElementById(id);
+  const years = [0, 1, 2, 3].map(k => year - k).filter(y => YEARS.includes(y));
+  const series = years.map((y, k) => {
+    let sum = 0;
+    const pts = weeksOf(y).filter(ws => ws <= DATA.current).map(ws => sum += perWeek(ws));
+    return { y, pts, color: css(k ? "--ink-3" : "--cl1"), opacity: [1, .85, .5, .28][k], width: k ? 1.5 : 2.5 };
+  });
+  const top = Math.max(1, ...series.map(q => q.pts[q.pts.length - 1] || 0));
+
+  const W = Math.max(300, node.clientWidth || 500);
+  const padL = 40, padR = 38, padT = 8, plotH = 200, padB = 20, H = padT + plotH + padB;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  const ticks = niceTicks(top, 4), yMax = ticks[ticks.length - 1];
+  const slotW = (W - padL - padR) / 53;
+  const X = i => padL + (i + .5) * slotW, Y = v => padT + (1 - v / yMax) * plotH;
+
+  ticks.forEach(t => {
+    const y = Math.round(Y(t)) + .5;
+    svg.appendChild(el("line", { x1: padL, y1: y, x2: W - padR, y2: y,
+      stroke: css(t ? "--grid-b" : "--line"), "stroke-width": 1 }));
+    const lb = el("text", { class: "val", x: padL - 6, y: y + 3, "text-anchor": "end" });
+    lb.textContent = t; svg.appendChild(lb);
+  });
+  let month = -1;
+  weeksOf(year).forEach((ws, i) => {
+    const m = addDays(ws, 3).getMonth();
+    if (m === month) return;
+    month = m;
+    if (m % 2) return;                              // every other month: the panel is narrow
+    const lb = el("text", { class: "val", x: X(i) - slotW / 2, y: H - 5 });
+    lb.textContent = MON[m]; svg.appendChild(lb);
+  });
+
+  // earlier years first, the shown year on top
+  series.slice().reverse().forEach(q => {
+    if (!q.pts.length) return;
+    svg.appendChild(el("polyline", { points: q.pts.map((v, i) => X(i) + "," + Y(v)).join(" "), fill: "none",
+      stroke: q.color, "stroke-opacity": q.opacity, "stroke-width": q.width,
+      "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  });
+  // the year at the end of its line; labels that would collide are pushed apart
+  const ends = series.filter(q => q.pts.length).map(q => ({ q, x: X(q.pts.length - 1) + 6, y: Y(q.pts[q.pts.length - 1]) + 3 }))
+    .sort((a, b) => a.y - b.y);
+  ends.forEach((e, i) => { if (i && e.y - ends[i - 1].y < 11 && Math.abs(e.x - ends[i - 1].x) < 30) e.y = ends[i - 1].y + 11; });
+  for (const e of ends) {
+    const lb = el("text", { x: Math.min(e.x, W - 30), y: e.y, "font-size": 10, "font-weight": e.q.y === year ? 700 : 500,
+      fill: css(e.q.y === year ? "--ink" : "--ink-3"), stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke" });
+    lb.textContent = e.q.y; svg.appendChild(lb);
+  }
+
+  const mark = el("line", { y1: padT, y2: padT + plotH, stroke: css("--ink-3"), "stroke-width": 1, visibility: "hidden" });
+  svg.appendChild(mark);
+  const hit = el("rect", { x: padL, y: padT, width: W - padL - padR, height: plotH, fill: "transparent" });
+  hit.addEventListener("mousemove", ev => {
+    const i = Math.max(0, Math.min(52, Math.floor((ev.clientX - svg.getBoundingClientRect().left - padL) / slotW)));
+    mark.setAttribute("x1", X(i)); mark.setAttribute("x2", X(i)); mark.setAttribute("visibility", "visible");
+    showTip(ev, "Неделя " + (i + 1), series.filter(q => q.pts[i] !== undefined)
+      .map(q => ({ c: q.color, k: q.y, v: q.pts[i], b: q.y === year })));
+  });
+  hit.addEventListener("mouseleave", () => { hideTip(); mark.setAttribute("visibility", "hidden"); });
+  svg.appendChild(hit);
+  node.innerHTML = ""; node.appendChild(svg);
 }
 
 // ---- tabs -------------------------------------------------------------------
