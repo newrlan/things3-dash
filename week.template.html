@@ -160,9 +160,13 @@
 <div class="card">
   <div class="bhd"><h2>Год к году</h2></div>
   <div class="duo">
-    <div><div class="sub">Закрыто задач с начала года</div><div class="chart" id="yoy-tasks"></div></div>
+    <div><div class="sub">Выполнено задач с начала года</div><div class="chart" id="yoy-tasks"></div></div>
+    <div><div class="sub">Отменено задач с начала года</div><div class="chart" id="yoy-tasks-canceled"></div></div>
+  </div>
+  <div class="duo" style="margin-top:18px">
     <div><div class="sub">Открыто проектов с начала года</div><div class="chart" id="yoy-started"></div></div>
     <div><div class="sub">Завершено проектов с начала года</div><div class="chart" id="yoy-projects"></div></div>
+    <div><div class="sub">Отменено проектов с начала года</div><div class="chart" id="yoy-projects-canceled"></div></div>
   </div>
 </div>
 </div>
@@ -677,8 +681,8 @@ function weeksOf(y) {
 }
 
 // the projects of the year along a strip of weeks. A cell of the strip is one
-// week, the darker the more tasks were closed in it (tasks without an area are
-// left out); the scale is the same for every year. Above the strip are the
+// week, the darker the more tasks were closed in it, all tasks counted; the
+// scale is the same for every year. Above the strip are the
 // projects started in each week, under it the projects closed in it, each
 // group on a dashed line from the week.
 // a project's life in words: days up to a month, calendar months and days beyond
@@ -704,10 +708,12 @@ for (const p of DATA.pr) {
 }
 const STARTED_IN = {};                            // {week start: [[title, start date, closing date, status, in Someday]]}
 for (const p of DATA.ps) (STARTED_IN[mondayOf(p[1])] = STARTED_IN[mondayOf(p[1])] || []).push(p);
+// [added, closed] in a week over all tasks, from its flow [new open, new closed, old closed]
+const FLOW_OF = ws => { const f = DATA.wk[ws].f; return [f[0] + f[1], f[1] + f[2]]; };
 // how dark a week is: by the tasks closed in it, against a busy week of the
 // whole history (the 95th percentile), so that years can be compared
 const HEAT_TOP = (() => {
-  const v = DATA.weeks.map(w => DATA.wk[w].g[1]).sort((a, b) => a - b);
+  const v = DATA.weeks.map(w => FLOW_OF(w)[1]).sort((a, b) => a - b);
   return Math.max(1, v[Math.floor(v.length * 0.95)] || 1);
 })();
 const HEAT = n => 0.06 + 0.94 * Math.min(1, n / HEAT_TOP);
@@ -718,15 +724,18 @@ function drawYear() {
   document.getElementById("yprev").disabled = year <= YEARS[0];
   document.getElementById("ynext").disabled = year >= YEARS[YEARS.length - 1];
   document.getElementById("ytoday").disabled = year === yearOf(DATA.current);
-  // tasks with an area, as in the chart above; projects by their first completed
+  // all tasks, as in the chart above; projects by their first completed
   // task and by their completion, repeating ones left out
-  drawYoY("yoy-tasks", ws => DATA.wk[ws] ? DATA.wk[ws].g[1] : 0);
+  // DATA.wk[ws].c is [completed, canceled] tasks of the week; a project's status is 3 or 2
+  drawYoY("yoy-tasks", ws => DATA.wk[ws] ? DATA.wk[ws].c[0] : 0);
+  drawYoY("yoy-tasks-canceled", ws => DATA.wk[ws] ? DATA.wk[ws].c[1] : 0);
   drawYoY("yoy-started", ws => (STARTED_IN[ws] || []).length);
   drawYoY("yoy-projects", ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 3).length);
+  drawYoY("yoy-projects-canceled", ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 2).length);
 
   let added = 0, closed = 0;
   const slots = weeksOf(year).map(ws => {
-    const g = DATA.wk[ws] ? DATA.wk[ws].g : null;
+    const g = DATA.wk[ws] ? FLOW_OF(ws) : null;
     if (!g) return { ws, g };
     added += g[0]; closed += g[1];
     return { ws, g, added, closed, top: added - closed };
@@ -783,8 +792,14 @@ function drawYear() {
   const halo = { stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round" };
 
   let month = -1;
-  const pick = el("rect", { y: padT - 1.5, width: slotW + 1, height: plotH + 3, rx: 4, fill: "none",
-    stroke: css("--ink"), "stroke-width": 1.5, visibility: "hidden", "pointer-events": "none" });
+  // the week under the pointer is drawn again, larger, over its neighbours: a
+  // base of card colour so the cells beneath do not show through, then the colour
+  const grow = 4;
+  const pick = el("g", { visibility: "hidden", "pointer-events": "none" });
+  const big = { y: padT - grow, width: slotW - 2 + 2 * grow, height: plotH + 2 * grow, rx: 5 };
+  const pickBase = el("rect", Object.assign({ fill: css("--card"), stroke: css("--card"), "stroke-width": 2 }, big));
+  const pickTone = el("rect", Object.assign({ fill: css("--cl1") }, big));
+  pick.appendChild(pickBase); pick.appendChild(pickTone);
   slots.forEach((x, i) => {
     const x0 = padL + i * slotW;
     // a month is named under the first week whose Thursday falls into it
@@ -800,7 +815,8 @@ function drawYear() {
     if (!x.g) return;
     const hit = el("rect", { x: x0, y: padT, width: slotW, height: plotH, fill: "transparent" });
     hit.addEventListener("mousemove", ev => {
-      pick.setAttribute("x", x0 - .5); pick.setAttribute("visibility", "visible");
+      for (const r of [pickBase, pickTone]) r.setAttribute("x", x0 + 1 - grow);
+      pickTone.setAttribute("fill-opacity", HEAT(x.g[1])); pick.setAttribute("visibility", "visible");
       showTip(ev, wlabel(x.ws), [
         { c: css("--cl1"), k: "Закрыто за неделю", v: x.g[1], b: true },
         { k: "Добавлено за неделю", v: x.g[0] },

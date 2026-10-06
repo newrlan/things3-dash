@@ -377,11 +377,14 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
     closed = defaultdict(int)
     new_open = new_closed = old_closed = 0
     area_added = area_closed = 0                    # the same flow, tasks without an area left out
+    completed = canceled = 0                        # closed tasks by how they ended, for the year tab
     for (_, a), v in flow_rows:
         closed[a] += v[1] + v[2] + v[3] + v[4]
         new_open += v[0]
         new_closed += v[1] + v[2]
         old_closed += v[3] + v[4]
+        completed += v[1] + v[3]
+        canceled += v[2] + v[4]
         if a != NO_AREA:
             area_added += v[0] + v[1] + v[2]
             area_closed += v[1] + v[2] + v[3] + v[4]
@@ -398,7 +401,8 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
         oo, on, coc, coca, cnc, cnca = v[3:]
         state = "open" if not closed_on else ("wk" if closed_on <= end else "later")
         rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on])
-    return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed], "p": rows}
+    return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed],
+            "c": [completed, canceled], "p": rows}
 
 
 def project_starts(con, tasks):

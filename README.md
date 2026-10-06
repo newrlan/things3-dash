@@ -30,7 +30,7 @@ current one.
 
 The **Year** tab shows the projects of a year along a strip of weeks, with
 navigation by year. A cell of the strip is one week: the darker it is, the more
-tasks were closed in it (tasks without an area are left out).
+tasks were closed in it.
 
 Above the strip are the projects started in each week, under it the
 projects closed in it, each group on a dashed line from the week; canceled
@@ -41,9 +41,9 @@ the project lived through, from its start (or its creation, if no task was
 completed) to its closing, or to today for an open one.
 
 The "year against year" card compares the shown year with the three before it:
-running totals by week of closed tasks (tasks without an area left out), of
-started projects and of completed projects. A project starts on the day its
-first task was completed.
+running totals by week of completed and of canceled tasks, and of started,
+completed and canceled projects. A project starts on the day its first task
+was completed.
 
 ## History
 
