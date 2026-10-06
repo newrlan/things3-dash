@@ -822,20 +822,33 @@ function drawYear() {
       fill: css(x.g ? "--cl1" : "--grid-b"), "fill-opacity": x.g ? HEAT(x.g[1]) : 0.6 }));
     if (!x.g) return;
     const hit = el("rect", { x: x0, y: padT, width: slotW, height: plotH, fill: "transparent" });
-    hit.addEventListener("mousemove", ev => {
+    hit.addEventListener("mouseenter", () => {
       for (const r of [pickBase, pickTone]) r.setAttribute("x", x0 + 1 - grow);
       pickTone.setAttribute("fill-opacity", HEAT(x.g[1])); pick.setAttribute("visibility", "visible");
-      showTip(ev, wlabel(x.ws), [
-        { c: css("--cl1"), k: "Закрыто за неделю", v: x.g[1], b: true },
-        { k: "Добавлено за неделю", v: x.g[0] },
-        { k: "Запас к началу года", v: signed(x.top), top: true }
-      ]);
+      // the note sits beside the cell, right of it while there is room, and
+      // stays inside the strip so that it never covers a project name
+      const a = addDays(x.ws, 0), b = addDays(x.ws, 6);
+      const parts = [a.getDate() + " " + MON[a.getMonth()] + " – " + b.getDate() + " " + MON[b.getMonth()],
+                     "сделано " + x.g[1], "новых " + x.g[0]];
+      noteText.textContent = parts.join(" · ");
+      const w = ctx.measureText(noteText.textContent).width * 12 / 11 + 20;
+      const right = x0 + slotW + grow + 6, nx = right + w > W - padR ? x0 - grow - 6 - w : right;
+      noteBox.setAttribute("x", nx); noteBox.setAttribute("width", w);
+      noteText.setAttribute("x", nx + 10);
+      note.setAttribute("visibility", "visible");
+      markWeek(x.ws, true);
     });
-    hit.addEventListener("mouseenter", () => markWeek(x.ws, true));
-    hit.addEventListener("mouseleave", () => { hideTip(); pick.setAttribute("visibility", "hidden"); markWeek(x.ws, false); });
+    hit.addEventListener("mouseleave", () => {
+      pick.setAttribute("visibility", "hidden"); note.setAttribute("visibility", "hidden"); markWeek(x.ws, false);
+    });
     svg.appendChild(hit);
   });
   svg.appendChild(pick);
+  const note = el("g", { visibility: "hidden", "pointer-events": "none" });
+  const noteBox = el("rect", { y: padT + 1, height: plotH - 2, rx: 6, fill: css("--card"), stroke: css("--border"), "stroke-width": 1 });
+  const noteText = el("text", { y: padT + plotH / 2 + 4, "font-size": 12, "font-weight": 500, fill: css("--ink") });
+  note.appendChild(noteBox); note.appendChild(noteText);
+  svg.appendChild(note);
 
   // hovering a name outlines the weeks the project lived through: from the week
   // of its start to the week it was closed in (today for an open one). The
