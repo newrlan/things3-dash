@@ -685,8 +685,8 @@ function weeksOf(y) {
 // zero. A column starts where the previous week ended, sinks by what was closed
 // in the week and is as long as what was added in it: its top is how far the
 // stock of open tasks is from where the year began. Tasks without an area are
-// left out. Under the columns are the projects closed in each week, hung on a
-// dashed line dropped from the week.
+// left out. Above the columns are the projects started in each week, under
+// them the projects closed in it, each group on a dashed line from the week.
 // a project's life in words: days up to a month, calendar months and days beyond
 function lifeSpan(from, to) {
   const a = addDays(from, 0), b = addDays(to, 0);
@@ -708,8 +708,8 @@ for (const p of DATA.pr) {
   const ws = mondayOf(p[1]);
   (CLOSED_IN[ws] = CLOSED_IN[ws] || []).push(p);
 }
-const STARTED_IN = {};                            // {week start: projects started in the week}
-for (const d of DATA.ps) STARTED_IN[mondayOf(d)] = (STARTED_IN[mondayOf(d)] || 0) + 1;
+const STARTED_IN = {};                            // {week start: [[title, start date, closing date, status, in Someday]]}
+for (const p of DATA.ps) (STARTED_IN[mondayOf(p[1])] = STARTED_IN[mondayOf(p[1])] || []).push(p);
 function drawYear() {
   const node = document.getElementById("yflow");
   document.getElementById("ylabel").textContent = year;
@@ -720,7 +720,7 @@ function drawYear() {
   // tasks with an area, as in the chart above; projects by their first completed
   // task and by their completion, repeating ones left out
   drawYoY("yoy-tasks", ws => DATA.wk[ws] ? DATA.wk[ws].g[1] : 0);
-  drawYoY("yoy-started", ws => STARTED_IN[ws] || 0);
+  drawYoY("yoy-started", ws => (STARTED_IN[ws] || []).length);
   drawYoY("yoy-projects", ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 3).length);
 
   let added = 0, closed = 0;
@@ -737,7 +737,40 @@ function drawYear() {
   }
 
   const W = Math.max(520, node.clientWidth || 900);
-  const padL = 44, padR = 4, padT = 10, plotH = 340, padB = 22;
+  const padL = 44, padR = 4, plotH = 340, padB = 22, rowH = 15;
+  const slotW = (W - padL - padR) / slots.length, barW = Math.max(3, Math.min(22, slotW - 4));
+
+  // project names around the columns: every name takes the first row where it
+  // fits, counting away from the plot. The names above have to be laid out
+  // before anything is drawn, because they push the plot down.
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = "500 11px " + getComputedStyle(document.body).fontFamily;
+  function layOut(pick) {
+    const rows = [], weeks = [];
+    slots.forEach((x, i) => {
+      const ps = pick(x.ws);
+      if (!ps.length) return;
+      const cx = Math.round(padL + i * slotW + slotW / 2) + .5, labels = [];
+      for (const p of ps) {
+        const text = p.title.length > 30 ? p.title.slice(0, 29) + "…" : p.title;
+        const w = ctx.measureText(text).width, left = cx + 5 + w > W - padR;
+        const a = left ? cx - 5 - w : cx + 5, b = a + w;
+        let r = 0;
+        while ((rows[r] || []).some(([u, v]) => a < v + 10 && b > u - 10)) r++;
+        (rows[r] = rows[r] || []).push([a, b]);
+        labels.push({ p, text, r, x: left ? b : a, anchor: left ? "end" : "start" });
+      }
+      weeks.push({ x, cx, labels, deepest: Math.max(...labels.map(l => l.r)) });
+    });
+    return { weeks, rows: rows.length };
+  }
+  const byTitle = (a, b) => a.title.localeCompare(b.title);
+  const above = layOut(ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday]) => ({ title, from, to, st, someday })).sort(byTitle));
+  // completed projects first, canceled ones after them
+  const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from]) => ({ title, from, to, st }))
+    .sort((a, b) => b.st - a.st || byTitle(a, b)));
+
+  const padT = 10 + (above.rows ? above.rows * rowH + 8 : 0);
   const H = padT + plotH + padB;
   const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
   const shown = slots.filter(x => x.g);
@@ -745,7 +778,6 @@ function drawYear() {
   const step = niceTicks(hi - lo, 6)[1] || 1;
   const yMin = Math.floor(lo / step) * step, yMax = Math.ceil(hi / step) * step || step;
   const Y = v => padT + (yMax - v) / (yMax - yMin) * plotH;
-  const slotW = (W - padL - padR) / slots.length, barW = Math.max(3, Math.min(22, slotW - 4));
   const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
 
   for (let t = yMin; t <= yMax + step * 0.001; t += step) {
@@ -801,57 +833,58 @@ function drawYear() {
     svg.appendChild(hit);
   });
 
-  // projects closed in the week: each name takes the first row where it fits,
-  // completed ones first; the line of the week runs down to its last name
-  const ctx = document.createElement("canvas").getContext("2d");
-  ctx.font = "500 11px " + getComputedStyle(document.body).fontFamily;
-  const rowsUsed = [], rowH = 15, top = H + 6;
+  // hovering a name shows the life of the project over the weeks: from the week
+  // of its start to the week it was closed in (today for an open one), cut at
+  // the edge of the year
   const span = el("g", { "pointer-events": "none" });
-  let done = 0, dropped = 0;
-  slots.forEach((x, i) => {
-    const ps = (CLOSED_IN[x.ws] || []).slice().sort((a, b) => b[2] - a[2] || a[0].localeCompare(b[0]));
-    if (!ps.length) return;
-    const cx = Math.round(padL + i * slotW + slotW / 2) + .5;
-    let deepest = 0;
-    for (const [title, closed, st, started] of ps) {
-      st === 3 ? done++ : dropped++;
-      const text = title.length > 30 ? title.slice(0, 29) + "…" : title;
-      const w = ctx.measureText(text).width, left = cx + 5 + w > W - padR;
-      const a = left ? cx - 5 - w : cx + 5, b = a + w;
-      let r = 0;
-      while ((rowsUsed[r] || []).some(([p, q]) => a < q + 10 && b > p - 10)) r++;
-      (rowsUsed[r] = rowsUsed[r] || []).push([a, b]);
-      deepest = Math.max(deepest, r);
-      const lb = el("text", Object.assign({ x: left ? b : a, y: top + r * rowH + 11, "font-size": 11, "font-weight": 500,
-        "text-anchor": left ? "end" : "start", fill: css(st === 3 ? "--ink-2" : "--ink-3") }, halo));
-      lb.textContent = text;
-      // hovering a name shows the life of the project over the weeks: from the
-      // week of its start to the week it was closed in, cut at the edge of the year
-      lb.style.cursor = "default";
-      lb.addEventListener("mouseenter", () => {
-        const from = slots.findIndex(q => q.ws === mondayOf(started));
-        const xa = from < 0 ? padL : padL + from * slotW + slotW / 2, yl = padT + plotH;
-        span.appendChild(el("rect", { x: xa, y: padT, width: Math.max(2, cx - xa), height: plotH,
-          fill: css("--ink"), "fill-opacity": 0.06 }));
-        span.appendChild(el("line", { x1: xa, y1: yl, x2: cx, y2: yl, stroke: css("--ink"), "stroke-width": 3,
-          "stroke-linecap": from < 0 ? "butt" : "round" }));
-        for (const xx of from < 0 ? [cx] : [xa, cx])
-          span.appendChild(el("circle", { cx: xx, cy: yl, r: 4, fill: css("--ink"), stroke: css("--card"), "stroke-width": 2 }));
-      });
-      lb.addEventListener("mousemove", ev => showTip(ev, title, [
-        { k: st === 3 ? "Завершён" : "Отменён", v: human(addDays(closed, 0)), b: true },
-        { k: "Начат", v: human(addDays(started, 0)) },
-        { k: "Длительность", v: lifeSpan(started, closed) }
-      ]));
-      lb.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; });
-      names.appendChild(lb);
+  const edge = iso => {
+    const i = slots.findIndex(q => q.ws === mondayOf(iso));
+    return i >= 0 ? { x: padL + i * slotW + slotW / 2, cut: false }
+                  : { x: iso < slots[0].ws ? padL : W - padR, cut: true };
+  };
+  function showSpan(p) {
+    const a = edge(p.from), b = edge(p.to || DATA.today), yl = padT + plotH;
+    span.appendChild(el("rect", { x: a.x, y: padT, width: Math.max(2, b.x - a.x), height: plotH,
+      fill: css("--ink"), "fill-opacity": 0.06 }));
+    span.appendChild(el("line", { x1: a.x, y1: yl, x2: b.x, y2: yl, stroke: css("--ink"), "stroke-width": 3 }));
+    // a dot marks a real start or closing: none at the edge of the year, none
+    // at today's end of a project that is still open
+    if (!p.to) b.cut = true;
+    for (const e of [a, b]) if (!e.cut)
+      span.appendChild(el("circle", { cx: e.x, cy: yl, r: 4, fill: css("--ink"), stroke: css("--card"), "stroke-width": 2 }));
+  }
+  // yOf: baseline of a row; the line of the week runs from the column to its last name
+  // byStart: the names stand for the start of the project, so the card leads with it
+  function drawNames(layout, yOf, lineFrom, lineTo, byStart) {
+    for (const wk of layout.weeks) {
+      for (const l of wk.labels) {
+        const p = l.p;
+        const lb = el("text", Object.assign({ x: l.x, y: yOf(l.r), "font-size": 11, "font-weight": 500,
+          "text-anchor": l.anchor, fill: css(!p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2") }, halo));
+        lb.textContent = l.text;
+        lb.style.cursor = "default";
+        lb.addEventListener("mouseenter", () => showSpan(p));
+        const began = { k: "Начат", v: human(addDays(p.from, 0)), b: byStart };
+        const ended = p.to ? { k: p.st === 3 ? "Завершён" : "Отменён", v: human(addDays(p.to, 0)), b: !byStart }
+          : { c: css(p.someday ? "--op2" : "--op1"), k: p.someday ? "В работе, Someday" : "В работе", v: "", b: !byStart };
+        lb.addEventListener("mousemove", ev => showTip(ev, p.title,
+          (byStart ? [began, ended] : [ended, began]).concat([{ k: "Длительность", v: lifeSpan(p.from, p.to || DATA.today) }])));
+        lb.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; });
+        names.appendChild(lb);
+      }
+      drops.appendChild(el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(wk.deepest),
+        stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" }));
     }
-    drops.appendChild(el("line", { x1: cx, y1: x.g ? Y(x.bottom) + 2 : padT + plotH, x2: cx, y2: top + deepest * rowH + 13,
-      stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" }));
-  });
+  }
+  const top = H + 6;
+  drawNames(above, r => padT - 10 - r * rowH, x => x.g ? Y(x.top) - 2 : padT + plotH, r => padT - 20 - r * rowH, true);
+  drawNames(below, r => top + r * rowH + 11, x => x.g ? Y(x.bottom) + 2 : padT + plotH, r => top + r * rowH + 13);
+  const all = below.weeks.flatMap(wk => wk.labels.map(l => l.p));
+  const done = all.filter(p => p.st === 3).length, dropped = all.length - done;
+  const opened = above.weeks.reduce((n, wk) => n + wk.labels.length, 0);
   svg.appendChild(span);
   svg.appendChild(names);
-  const H2 = rowsUsed.length ? top + rowsUsed.length * rowH + 4 : H;
+  const H2 = below.rows ? top + below.rows * rowH + 4 : H;
   svg.setAttribute("height", H2); svg.setAttribute("viewBox", `0 0 ${W} ${H2}`);
   node.innerHTML = ""; node.appendChild(svg);
 
@@ -861,7 +894,8 @@ function drawYear() {
   for (const [color, name, v] of [[css("--cl2"), "Выше предыдущей недели"], ["dash", "Уровень начала года"],
                                   [null, "Добавлено", added], [null, "Закрыто", closed],
                                   [null, "Запас к началу года", signed(added - closed)],
-                                  [null, "Проектов завершено", done], [null, "отменено", dropped]]) {
+                                  [null, "Проектов открыто", opened], [null, "завершено", done],
+                                  [null, "отменено", dropped]]) {
     const it = document.createElement("span");
     if (color) {
       const sw = document.createElement("i");

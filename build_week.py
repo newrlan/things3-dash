@@ -415,23 +415,23 @@ def project_starts(con, tasks):
     return started
 
 
-def year_projects(con, tasks):
+def year_projects(con, tasks, someday):
     """Projects for the year tab, copies of repeating projects left out:
     closed ones as [title, closing date, status, start date], where a project
-    without a completed to-do starts on the day it was created, and the start
-    dates of all the projects that have started."""
+    without a completed to-do starts on the day it was created, and the ones
+    that have started as [title, start date, closing date, status, in Someday]."""
     started = project_starts(con, tasks)
     closed, starts = [], []
     for u, t, c, s, st in con.execute("""SELECT project_uuid, title, created, closed, status FROM project
                                          WHERE NOT repeating ORDER BY closed, title"""):
         if u in started:
-            starts.append(min(started[u], s or started[u]))
+            starts.append([t, min(started[u], s or started[u]), s, st, int(u in someday)])
         if s and st in (2, 3):
             closed.append([t, s, st, min(started.get(u, c), s)])
-    return closed, sorted(starts)
+    return closed, sorted(starts, key=lambda x: (x[1], x[0]))
 
 
-def build_payload(con, flows, pweeks, alive, tasks):
+def build_payload(con, flows, pweeks, alive, tasks, someday):
     current = week_start(TODAY)
     meta = {
         "areas": dict(con.execute("SELECT area_uuid, title FROM area")),
@@ -466,7 +466,7 @@ def build_payload(con, flows, pweeks, alive, tasks):
     for w in weeks:
         for (day, _), v in week_flow[w]:
             closed[(date.fromisoformat(day) - first).days] += v[1] + v[2] + v[3] + v[4]
-    closed_pr, started_pr = year_projects(con, tasks)
+    closed_pr, started_pr = year_projects(con, tasks, someday)
     return {"weeks": weeks, "current": iso(current), "today": iso(TODAY),
             "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen),
             "pr": closed_pr, "ps": started_pr}
@@ -501,7 +501,8 @@ def main():
         con.execute("ROLLBACK")
         raise
 
-    payload = build_payload(con, flows, pweeks, alive, tasks)
+    someday = {u for u, (_, r) in projects.items() if r["start"] == 2}
+    payload = build_payload(con, flows, pweeks, alive, tasks, someday)
     con.close()
 
     blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

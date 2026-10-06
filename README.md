@@ -34,11 +34,12 @@ column per week: it starts where the previous week ended, sinks by what was
 closed in the week and is as long as what was added in it. Its top is how far
 the stock is from where the year began. Tasks without an area are left out.
 
-Under the columns are the projects closed in each week, hung on a dashed line
-dropped from the week; canceled projects are in grey, copies of repeating
-projects are not shown. Hovering a name marks the
-weeks the project lived through, from its first completed task (or its
-creation, if no task was completed) to its closing.
+Above the columns are the projects started in each week, under them the
+projects closed in it, each group on a dashed line from the week; canceled
+projects are in grey, copies of repeating projects are not shown. A project
+starts on the day its first task was completed. Hovering a name marks the weeks
+the project lived through, from its start (or its creation, if no task was
+completed) to its closing, or to today for an open one.
 
 The "year against year" card compares the shown year with the three before it:
 running totals by week of closed tasks (tasks without an area left out), of
