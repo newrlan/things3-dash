@@ -770,7 +770,8 @@ function drawYear() {
   const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from]) => ({ title, from, to, st }))
     .sort((a, b) => b.st - a.st || byTitle(a, b)));
 
-  const padT = 10 + (above.rows ? above.rows * rowH + 8 : 0);
+  const gapT = 20;                                // air above the strip, to match the names under it
+  const padT = 10 + (above.rows ? above.rows * rowH + 8 + gapT : 0);
   const H = padT + plotH + padB;
   const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
   const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
@@ -808,23 +809,24 @@ function drawYear() {
   });
   svg.appendChild(pick);
 
-  // hovering a name shows the life of the project over the weeks: from the week
-  // of its start to the week it was closed in (today for an open one), cut at
-  // the edge of the year
+  // hovering a name outlines the weeks the project lived through: from the week
+  // of its start to the week it was closed in (today for an open one). The
+  // outline is left open on a side where the project goes on: past the edge of
+  // the year, or beyond today for a project that is still open.
   const span = el("g", { "pointer-events": "none" });
-  const edge = iso => {
+  const edge = (iso, right) => {
     const i = slots.findIndex(q => q.ws === mondayOf(iso));
-    return i >= 0 ? { x: padL + i * slotW + slotW / 2, cut: false }
+    return i >= 0 ? { x: padL + (i + (right ? 1 : 0)) * slotW, cut: false }
                   : { x: iso < slots[0].ws ? padL : W - padR, cut: true };
   };
   function showSpan(p) {
-    const a = edge(p.from), b = edge(p.to || DATA.today), yl = padT + plotH + 4;
-    span.appendChild(el("line", { x1: a.x, y1: yl, x2: b.x, y2: yl, stroke: css("--ink"), "stroke-width": 3 }));
-    // a dot marks a real start or closing: none at the edge of the year, none
-    // at today's end of a project that is still open
+    const a = edge(p.from, false), b = edge(p.to || DATA.today, true);
     if (!p.to) b.cut = true;
-    for (const e of [a, b]) if (!e.cut)
-      span.appendChild(el("circle", { cx: e.x, cy: yl, r: 4, fill: css("--ink"), stroke: css("--card"), "stroke-width": 2 }));
+    const l = a.x - 1, r = b.x + 1, t = padT - 3, u = padT + plotH + 3, R = 5;
+    const d = (a.cut ? `M${l},${t}` : `M${l + R},${t}`) +
+      (b.cut ? `H${r} M${r},${u}` : `H${r - R} Q${r},${t} ${r},${t + R} V${u - R} Q${r},${u} ${r - R},${u}`) +
+      (a.cut ? `H${l}` : `H${l + R} Q${l},${u} ${l},${u - R} V${t + R} Q${l},${t} ${l + R},${t}`);
+    span.appendChild(el("path", { d, fill: "none", stroke: css("--op1"), "stroke-width": 1, "stroke-linecap": "round" }));
   }
   // yOf: baseline of a row; the line of the week runs from the column to its last name
   // byStart: the names stand for the start of the project, so the card leads with it
@@ -850,7 +852,7 @@ function drawYear() {
     }
   }
   const top = H + 6;
-  drawNames(above, r => padT - 10 - r * rowH, () => padT - 2, r => padT - 20 - r * rowH, true);
+  drawNames(above, r => padT - 10 - gapT - r * rowH, () => padT - 2, r => padT - 20 - gapT - r * rowH, true);
   drawNames(below, r => top + r * rowH + 11, () => padT + plotH + 2, r => top + r * rowH + 13);
   const all = below.weeks.flatMap(wk => wk.labels.map(l => l.p));
   const done = all.filter(p => p.st === 3).length, dropped = all.length - done;
