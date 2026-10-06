@@ -792,6 +792,14 @@ function drawYear() {
   const halo = { stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round" };
 
   let month = -1;
+  // {week start: [switch]}: turns the names of the week's projects and their
+  // lines bold or back; filled in when the names are drawn
+  const weekMarks = {};
+  const markWeek = (ws, on) => (weekMarks[ws] || []).forEach(f => f(on));
+  // the same for one project: its name where it starts and its name where it is closed
+  const projMarks = {};
+  const projKey = p => p.title + "|" + p.from + "|" + (p.to || "");
+  const markProject = (p, on) => (projMarks[projKey(p)] || []).forEach(f => f(on));
   // the week under the pointer is drawn again, larger, over its neighbours: a
   // base of card colour so the cells beneath do not show through, then the colour
   const grow = 4;
@@ -823,7 +831,8 @@ function drawYear() {
         { k: "Запас к началу года", v: signed(x.top), top: true }
       ]);
     });
-    hit.addEventListener("mouseleave", () => { hideTip(); pick.setAttribute("visibility", "hidden"); });
+    hit.addEventListener("mouseenter", () => markWeek(x.ws, true));
+    hit.addEventListener("mouseleave", () => { hideTip(); pick.setAttribute("visibility", "hidden"); markWeek(x.ws, false); });
     svg.appendChild(hit);
   });
   svg.appendChild(pick);
@@ -854,6 +863,11 @@ function drawYear() {
       const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(wk.deepest),
         stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" });
       drops.appendChild(drop);
+      const lbs = [];
+      (weekMarks[wk.x.ws] = weekMarks[wk.x.ws] || []).push(on => {
+        drop.setAttribute("stroke-width", on ? 2 : 1);
+        for (const lb of lbs) lb.setAttribute("font-weight", on ? 700 : 500);
+      });
       for (const l of wk.labels) {
         const p = l.p;
         const tone = css(!p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
@@ -863,19 +877,19 @@ function drawYear() {
           "text-anchor": l.anchor, fill: tone }, halo));
         lb.textContent = l.text;
         lb.style.cursor = "default";
-        // the name under the pointer and the line of its week turn bold
-        lb.addEventListener("mouseenter", () => {
-          showSpan(p); lb.setAttribute("font-weight", 700); drop.setAttribute("stroke-width", 2);
+        // the name under the pointer turns bold with the line of its week, and
+        // so does the other name of the same project, if it is in this year
+        (projMarks[projKey(p)] = projMarks[projKey(p)] || []).push(on => {
+          lb.setAttribute("font-weight", on ? 700 : 500); drop.setAttribute("stroke-width", on ? 2 : 1);
         });
+        lb.addEventListener("mouseenter", () => { showSpan(p); markProject(p, true); });
         const began = { k: "Начат", v: human(addDays(p.from, 0)), b: byStart };
         const ended = p.to ? { k: p.st === 3 ? "Завершён" : "Отменён", v: human(addDays(p.to, 0)), b: !byStart }
           : { c: css(p.someday ? "--op2" : "--op1"), k: p.someday ? "В работе, Someday" : "В работе", v: "", b: !byStart };
         lb.addEventListener("mousemove", ev => showTip(ev, p.title,
           (byStart ? [began, ended] : [ended, began]).concat([{ k: "Длительность", v: lifeSpan(p.from, p.to || DATA.today) }])));
-        lb.addEventListener("mouseleave", () => {
-          hideTip(); span.innerHTML = ""; lb.setAttribute("font-weight", 500); drop.setAttribute("stroke-width", 1);
-        });
-        names.appendChild(lb);
+        lb.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; markProject(p, false); });
+        names.appendChild(lb); lbs.push(lb);
       }
     }
   }
