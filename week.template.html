@@ -153,7 +153,7 @@
 </div>
 
 <div class="card">
-  <div class="bhd"><h2>Открытые задачи с начала года</h2></div>
+  <div class="bhd"><h2>Проекты года</h2></div>
   <div class="chart" id="yflow"></div>
 </div>
 
@@ -224,11 +224,6 @@ function barR(x, y, w, h, r) {
 function barL(x, y, w, h, r) {
   r = Math.min(r, h / 2, w);
   return `M${x+w},${y} L${x+r},${y} Q${x},${y} ${x},${y+r} L${x},${y+h-r} Q${x},${y+h} ${x+r},${y+h} L${x+w},${y+h} Z`;
-}
-// rounded top, flat bottom: a vertical bar segment that ends the stack
-function barT(x, y, w, h, r) {
-  r = Math.min(r, w / 2, h);
-  return `M${x},${y+h} L${x},${y+r} Q${x},${y} ${x+r},${y} L${x+w-r},${y} Q${x+w},${y} ${x+w},${y+r} L${x+w},${y+h} Z`;
 }
 function niceTicks(max, count) {
   if (max <= 0) return [0];
@@ -681,12 +676,11 @@ function weeksOf(y) {
   return out;
 }
 
-// one column per week. The level of open tasks at the start of the year is
-// zero. A column starts where the previous week ended, sinks by what was closed
-// in the week and is as long as what was added in it: its top is how far the
-// stock of open tasks is from where the year began. Tasks without an area are
-// left out. Above the columns are the projects started in each week, under
-// them the projects closed in it, each group on a dashed line from the week.
+// the projects of the year along a strip of weeks. A cell of the strip is one
+// week, the darker the more tasks were closed in it (tasks without an area are
+// left out); the scale is the same for every year. Above the strip are the
+// projects started in each week, under it the projects closed in it, each
+// group on a dashed line from the week.
 // a project's life in words: days up to a month, calendar months and days beyond
 function lifeSpan(from, to) {
   const a = addDays(from, 0), b = addDays(to, 0);
@@ -710,6 +704,13 @@ for (const p of DATA.pr) {
 }
 const STARTED_IN = {};                            // {week start: [[title, start date, closing date, status, in Someday]]}
 for (const p of DATA.ps) (STARTED_IN[mondayOf(p[1])] = STARTED_IN[mondayOf(p[1])] || []).push(p);
+// how dark a week is: by the tasks closed in it, against a busy week of the
+// whole history (the 95th percentile), so that years can be compared
+const HEAT_TOP = (() => {
+  const v = DATA.weeks.map(w => DATA.wk[w].g[1]).sort((a, b) => a - b);
+  return Math.max(1, v[Math.floor(v.length * 0.95)] || 1);
+})();
+const HEAT = n => 0.06 + 0.94 * Math.min(1, n / HEAT_TOP);
 function drawYear() {
   const node = document.getElementById("yflow");
   document.getElementById("ylabel").textContent = year;
@@ -728,8 +729,7 @@ function drawYear() {
     const g = DATA.wk[ws] ? DATA.wk[ws].g : null;
     if (!g) return { ws, g };
     added += g[0]; closed += g[1];
-    const prev = added - closed - g[0] + g[1];      // the level the previous week ended at
-    return { ws, g, added, closed, prev, top: added - closed, bottom: prev - g[1] };
+    return { ws, g, added, closed, top: added - closed };
   });
   if (!added && !closed) {
     node.innerHTML = '<div class="empty">За этот год ничего не добавлено и не закрыто.</div>';
@@ -737,8 +737,8 @@ function drawYear() {
   }
 
   const W = Math.max(520, node.clientWidth || 900);
-  const padL = 44, padR = 4, plotH = 340, padB = 22, rowH = 15;
-  const slotW = (W - padL - padR) / slots.length, barW = Math.max(3, Math.min(22, slotW - 4));
+  const padL = 8, padR = 4, plotH = 26, padB = 22, rowH = 15;
+  const slotW = (W - padL - padR) / slots.length;
 
   // project names around the columns: every name takes the first row where it
   // fits, counting away from the plot. The names above have to be laid out
@@ -773,65 +773,40 @@ function drawYear() {
   const padT = 10 + (above.rows ? above.rows * rowH + 8 : 0);
   const H = padT + plotH + padB;
   const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
-  const shown = slots.filter(x => x.g);
-  const lo = Math.min(0, ...shown.map(x => x.bottom)), hi = Math.max(0, ...shown.map(x => x.top));
-  const step = niceTicks(hi - lo, 6)[1] || 1;
-  const yMin = Math.floor(lo / step) * step, yMax = Math.ceil(hi / step) * step || step;
-  const Y = v => padT + (yMax - v) / (yMax - yMin) * plotH;
   const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
-
-  for (let t = yMin; t <= yMax + step * 0.001; t += step) {
-    const y = Math.round(Y(t)) + .5;
-    // the level of the start of the year is the dashed line
-    const line = el("line", { x1: padL, y1: y, x2: W - padR, y2: y,
-      stroke: css(t ? "--grid-b" : "--line"), "stroke-width": 1 });
-    if (!t) line.setAttribute("stroke-dasharray", "4 4");
-    svg.appendChild(line);
-    const lb = el("text", { class: "val", x: padL - 6, y: y + 3, "text-anchor": "end" });
-    lb.textContent = signed(t); svg.appendChild(lb);
-  }
-
-  // the dashed lines go under everything else; text gets a halo of card colour
-  // so a line passing behind it does not strike it through
   const drops = el("g"), names = el("g");
   svg.appendChild(drops);
   const halo = { stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round" };
 
   let month = -1;
+  const pick = el("rect", { y: padT - 1.5, width: slotW + 1, height: plotH + 3, rx: 4, fill: "none",
+    stroke: css("--ink"), "stroke-width": 1.5, visibility: "hidden", "pointer-events": "none" });
   slots.forEach((x, i) => {
-    const x0 = padL + i * slotW, bx = x0 + (slotW - barW) / 2;
+    const x0 = padL + i * slotW;
     // a month is named under the first week whose Thursday falls into it
     const m = addDays(x.ws, 3).getMonth();
     if (m !== month) {
       month = m;
-      const lb = el("text", Object.assign({ class: "val", x: bx, y: H - 6 }, halo));
+      const lb = el("text", Object.assign({ class: "val", x: x0 + 2, y: H - 6 }, halo));
       lb.textContent = MON[m]; svg.appendChild(lb);
     }
+    // a week without data keeps its place as a faint cell
+    svg.appendChild(el("rect", { x: x0 + 1, y: padT, width: slotW - 2, height: plotH, rx: 3,
+      fill: css(x.g ? "--cl1" : "--grid-b"), "fill-opacity": x.g ? HEAT(x.g[1]) : 0.6 }));
     if (!x.g) return;
-
-    // the part above the level of the previous week is lighter: the stock grew
-    const grew = x.top > x.prev, low = Math.min(x.top, x.prev);
-    if (low > x.bottom) {
-      const yt = Y(low), h = Math.max(1, Y(x.bottom) - yt);
-      svg.appendChild(grew ? el("rect", { x: bx, y: yt, width: barW, height: h, fill: css("--cl1") })
-                           : el("path", { d: barT(bx, yt, barW, h, 3), fill: css("--cl1") }));
-    }
-    if (grew) {
-      const gap = low > x.bottom ? 1 : 0, h = Math.max(1, Y(x.prev) - Y(x.top) - gap);
-      svg.appendChild(el("path", { d: barT(bx, Y(x.top), barW, h, 3), fill: css("--cl2") }));
-    }
-
     const hit = el("rect", { x: x0, y: padT, width: slotW, height: plotH, fill: "transparent" });
-    hit.addEventListener("mousemove", ev => showTip(ev, wlabel(x.ws), [
-      { k: "Запас к началу года", v: signed(x.top), b: true },
-      { k: "Добавлено с начала года", v: x.added },
-      { k: "Закрыто с начала года", v: x.closed },
-      { k: "Добавлено за неделю", v: x.g[0], top: true },
-      { k: "Закрыто за неделю", v: x.g[1] }
-    ]));
-    hit.addEventListener("mouseleave", hideTip);
+    hit.addEventListener("mousemove", ev => {
+      pick.setAttribute("x", x0 - .5); pick.setAttribute("visibility", "visible");
+      showTip(ev, wlabel(x.ws), [
+        { c: css("--cl1"), k: "Закрыто за неделю", v: x.g[1], b: true },
+        { k: "Добавлено за неделю", v: x.g[0] },
+        { k: "Запас к началу года", v: signed(x.top), top: true }
+      ]);
+    });
+    hit.addEventListener("mouseleave", () => { hideTip(); pick.setAttribute("visibility", "hidden"); });
     svg.appendChild(hit);
   });
+  svg.appendChild(pick);
 
   // hovering a name shows the life of the project over the weeks: from the week
   // of its start to the week it was closed in (today for an open one), cut at
@@ -843,9 +818,7 @@ function drawYear() {
                   : { x: iso < slots[0].ws ? padL : W - padR, cut: true };
   };
   function showSpan(p) {
-    const a = edge(p.from), b = edge(p.to || DATA.today), yl = padT + plotH;
-    span.appendChild(el("rect", { x: a.x, y: padT, width: Math.max(2, b.x - a.x), height: plotH,
-      fill: css("--ink"), "fill-opacity": 0.06 }));
+    const a = edge(p.from), b = edge(p.to || DATA.today), yl = padT + plotH + 4;
     span.appendChild(el("line", { x1: a.x, y1: yl, x2: b.x, y2: yl, stroke: css("--ink"), "stroke-width": 3 }));
     // a dot marks a real start or closing: none at the edge of the year, none
     // at today's end of a project that is still open
@@ -877,8 +850,8 @@ function drawYear() {
     }
   }
   const top = H + 6;
-  drawNames(above, r => padT - 10 - r * rowH, x => x.g ? Y(x.top) - 2 : padT + plotH, r => padT - 20 - r * rowH, true);
-  drawNames(below, r => top + r * rowH + 11, x => x.g ? Y(x.bottom) + 2 : padT + plotH, r => top + r * rowH + 13);
+  drawNames(above, r => padT - 10 - r * rowH, () => padT - 2, r => padT - 20 - r * rowH, true);
+  drawNames(below, r => top + r * rowH + 11, () => padT + plotH + 2, r => top + r * rowH + 13);
   const all = below.weeks.flatMap(wk => wk.labels.map(l => l.p));
   const done = all.filter(p => p.st === 3).length, dropped = all.length - done;
   const opened = above.weeks.reduce((n, wk) => n + wk.labels.length, 0);
@@ -888,10 +861,10 @@ function drawYear() {
   svg.setAttribute("height", H2); svg.setAttribute("viewBox", `0 0 ${W} ${H2}`);
   node.innerHTML = ""; node.appendChild(svg);
 
-  // what the lighter colour and the dashed line mean, then the totals of the year
+  // what the colour of a cell means, then the totals of the year
   const leg = document.createElement("div");
   leg.className = "legend";
-  for (const [color, name, v] of [[css("--cl2"), "Выше предыдущей недели"], ["dash", "Уровень начала года"],
+  for (const [color, name, v] of [["heat--cl1", "Закрыто задач за неделю"],
                                   [null, "Добавлено", added], [null, "Закрыто", closed],
                                   [null, "Запас к началу года", signed(added - closed)],
                                   [null, "Проектов открыто", opened], [null, "завершено", done],
@@ -899,7 +872,11 @@ function drawYear() {
     const it = document.createElement("span");
     if (color) {
       const sw = document.createElement("i");
-      if (color === "dash") sw.style.cssText = "width:16px; height:0; border-radius:0; border-top:1px dashed " + css("--line");
+      // from a quiet week to a busy one: the cell colour at 6% and at full strength
+      if (color.startsWith("heat")) {
+        const c = css(color.slice(4));
+        sw.style.width = "44px"; sw.style.background = `linear-gradient(90deg, ${c}10, ${c})`;
+      }
       else sw.style.background = color;
       it.appendChild(sw);
     }

@@ -28,13 +28,11 @@ current one.
    right, open tasks to the left, each split into "created earlier" and
    "created this week".
 
-The **Year** tab shows how the stock of open tasks moved through a year, with
-navigation by year. The level at the start of the year is zero. There is one
-column per week: it starts where the previous week ended, sinks by what was
-closed in the week and is as long as what was added in it. Its top is how far
-the stock is from where the year began. Tasks without an area are left out.
+The **Year** tab shows the projects of a year along a strip of weeks, with
+navigation by year. A cell of the strip is one week: the darker it is, the more
+tasks were closed in it (tasks without an area are left out).
 
-Above the columns are the projects started in each week, under them the
+Above the strip are the projects started in each week, under it the
 projects closed in it, each group on a dashed line from the week; canceled
 projects are in grey, copies of repeating projects are not shown. A project
 starts on the day its first task was completed. Hovering a name marks the weeks
