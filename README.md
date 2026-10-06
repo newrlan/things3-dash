@@ -34,7 +34,8 @@ tasks were closed in it (tasks without an area are left out).
 
 Above the strip are the projects started in each week, under it the
 projects closed in it, each group on a dashed line from the week; canceled
-projects are in grey, copies of repeating projects are not shown. A project
+projects are in grey; copies of repeating projects and projects that lasted
+less than two days are not shown. A project
 starts on the day its first task was completed. Hovering a name marks the weeks
 the project lived through, from its start (or its creation, if no task was
 completed) to its closing, or to today for an open one.

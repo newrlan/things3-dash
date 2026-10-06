@@ -765,10 +765,13 @@ function drawYear() {
     return { weeks, rows: rows.length };
   }
   const byTitle = (a, b) => a.title.localeCompare(b.title);
-  const above = layOut(ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday]) => ({ title, from, to, st, someday })).sort(byTitle));
+  // a project closed less than two days after its start is not shown
+  const lasted = p => !p.to || (addDays(p.to, 0) - addDays(p.from, 0)) / 864e5 >= 2;
+  const above = layOut(ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday]) => ({ title, from, to, st, someday }))
+    .filter(lasted).sort(byTitle));
   // completed projects first, canceled ones after them
   const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from]) => ({ title, from, to, st }))
-    .sort((a, b) => b.st - a.st || byTitle(a, b)));
+    .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)));
 
   const gapT = 20;                                // air above the strip, to match the names under it
   const padT = 10 + (above.rows ? above.rows * rowH + 8 + gapT : 0);
@@ -834,8 +837,11 @@ function drawYear() {
     for (const wk of layout.weeks) {
       for (const l of wk.labels) {
         const p = l.p;
-        const lb = el("text", Object.assign({ x: l.x, y: yOf(l.r), "font-size": 11, "font-weight": 500,
-          "text-anchor": l.anchor, fill: css(!p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2") }, halo));
+        const tone = css(!p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
+        // a dot of the project's colour on the line of the week, level with the name
+        names.appendChild(el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 3, fill: tone, stroke: css("--card"), "stroke-width": 1.5 }));
+        const lb = el("text", Object.assign({ x: l.x + (l.anchor === "end" ? -2 : 2), y: yOf(l.r), "font-size": 11, "font-weight": 500,
+          "text-anchor": l.anchor, fill: tone }, halo));
         lb.textContent = l.text;
         lb.style.cursor = "default";
         lb.addEventListener("mouseenter", () => showSpan(p));
