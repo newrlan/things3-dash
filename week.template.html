@@ -893,8 +893,7 @@ function drawYear() {
   // its life, from the week of its start to the week it was closed in (today for
   // an open one), and the names, dots and lines of the other projects
   const FADE = 0.25;
-  const others = [];                              // every name, dot and line; the project's own are lifted again
-  const keep = {};                                // {project: [what stays bright with it]}
+  const others = [];                              // every name, dot and line; the project's own come up on plates
   const weekOf = iso => {
     const i = slots.findIndex(q => q.ws === mondayOf(iso));
     return i >= 0 ? i : iso < slots[0].ws ? -1 : slots.length;
@@ -919,7 +918,6 @@ function drawYear() {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
     cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
     for (const e of others) e.setAttribute("opacity", FADE);
-    for (const k of keep[projKey(p)] || []) for (const e of k.ghosts) e.removeAttribute("opacity");
 
     // just over the strip: an arrow at the edge the project runs past, with the
     // date that lies beyond it, and the length of the project over its middle
@@ -943,21 +941,16 @@ function drawYear() {
   function drawNames(layout, yOf, lineFrom, lineTo, byStart) {
     for (const wk of layout.weeks) {
       // the line runs to the last name that is drawn. Hovering the week ("week")
-      // takes it on to the unseen projects, which come up on plates. Hovering one
-      // project ("project") leaves the line where it ends and only puts the dots
-      // of the unseen projects under it; a week with nothing drawn gets a line to
-      // its first dot.
+      // takes it on to the unseen projects, which come up on plates; hovering one
+      // project ("project") leaves it as it is.
       const seen = wk.labels.filter(l => !l.bare).map(l => l.r);
-      const unseen = wk.labels.filter(l => l.bare).map(l => l.r), ghosts = [];
       const rest = seen.length ? lineTo(Math.max(...seen)) : lineFrom(wk.x);
       const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx,
         stroke: css("--ink-3"), "stroke-dasharray": "2 3" });
       const lit = mode => {
         drop.setAttribute("stroke-width", mode === "week" ? 2 : 1);
-        drop.setAttribute("y2", mode === "week" ? lineTo(wk.deepest)
-          : mode && !seen.length ? lineTo(Math.min(...unseen)) : rest);
-        drop.setAttribute("visibility", mode || seen.length ? "visible" : "hidden");
-        for (const g of ghosts) g.setAttribute("visibility", mode === "project" ? "visible" : "hidden");
+        drop.setAttribute("y2", mode === "week" ? lineTo(wk.deepest) : rest);
+        drop.setAttribute("visibility", mode === "week" || seen.length ? "visible" : "hidden");
       };
       lit(false);
       drops.appendChild(drop);
@@ -980,10 +973,8 @@ function drawYear() {
         // a hidden project is not drawn at all, neither its dot nor its name, and
         // its place does not react to the pointer. Both come up on the plate when
         // its week is hovered.
-        if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); ghosts.push(dot); }
+        if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); }
         others.push(dot, lb);
-        // with the project stay bright the dots of the hidden projects of this week
-        (keep[projKey(p)] = keep[projKey(p)] || []).push({ ghosts });
         // the name under the pointer turns bold with the line of its week, and
         // so does the other name of the same project, if it is in this year;
         // hovering a week does the same to every name of that week
