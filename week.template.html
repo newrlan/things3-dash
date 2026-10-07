@@ -686,7 +686,7 @@ function weeksOf(y) {
 // scale is the same for every year. Above the strip are the
 // projects started in each week, under it the projects closed in it, each
 // group on a dashed line from the week.
-// a project's life in words: days up to a month, calendar months and days beyond
+// a project's life in words: calendar years, months and days
 function lifeSpan(from, to) {
   const a = addDays(from, 0), b = addDays(to, 0);
   // the same day of a later month, or its last day when the month is shorter
@@ -695,11 +695,12 @@ function lifeSpan(from, to) {
   let months = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
   while (months > 0 && after(months) > b) months--;
   const days = Math.round((b - after(months)) / 864e5);
-  if (!months) return days + " дн.";
+  // "1 год", "3 года", "5 лет"; zero parts are left out
+  const word = (n, one, few, many) => n + " " +
+    (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
   const y = Math.floor(months / 12), m = months % 12;
-  // "1 г.", "4 г.", but "5 л." and "11 л."
-  const yy = y % 10 >= 1 && y % 10 <= 4 && (y % 100 < 11 || y % 100 > 14) ? " г." : " л.";
-  return [y ? y + yy : "", m ? m + " мес." : "", days ? days + " дн." : ""].filter(Boolean).join(" ");
+  return [y ? word(y, "год", "года", "лет") : "", m ? word(m, "месяц", "месяца", "месяцев") : "",
+          days || !months ? word(days, "день", "дня", "дней") : ""].filter(Boolean).join(" ");
 }
 const mondayOf = iso => isoOf(addDays(iso, -((addDays(iso, 0).getDay() + 6) % 7)));
 const CLOSED_IN = {};                             // {week start: [[title, closing date, status, start date]]}
@@ -886,14 +887,44 @@ function drawYear() {
     const i = slots.findIndex(q => q.ws === mondayOf(iso));
     return i >= 0 ? i : iso < slots[0].ws ? -1 : slots.length;
   };
+  // a note of the hovered project: small text on a patch of card colour, so the
+  // faded names behind it do not show through
+  const OPENED = p => "открыто: " + human(addDays(p.from, 0));
+  const CLOSED = p => (p.st === 3 ? "закрыто: " : "отменено: ") + human(addDays(p.to, 0));
+  // dates are in italics, the length of the project in bold
+  function caption(text, x, y, anchor, bold) {
+    const g = el("g"), t = el("text", { x, y, "font-size": 10.5, "font-weight": bold ? 700 : 500,
+      "font-style": bold ? "normal" : "italic", "text-anchor": anchor, fill: css(bold ? "--ink" : "--ink-2") });
+    t.textContent = text;
+    g.appendChild(t); spot.appendChild(g);
+    const b = t.getBBox();
+    g.insertBefore(el("rect", { x: b.x - 3, y: b.y - 1, width: b.width + 6, height: b.height + 2, rx: 3, fill: css("--card") }), t);
+    g.box = b;
+    return g;
+  }
+  const notes = [];
   function showSpan(p) {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
     cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
     for (const e of others) e.setAttribute("opacity", FADE);
     for (const k of keep[projKey(p)] || []) for (const e of [k.drop].concat(k.ghosts)) e.removeAttribute("opacity");
+
+    // just over the strip: an arrow at the edge the project runs past, with the
+    // date that lies beyond it, and the length of the project over its middle
+    const y = padT - 7, xl = padL, xr = W - padR;
+    const left = a < 0 ? caption("← " + OPENED(p), xl + 3, y, "start") : null;
+    const right = b >= slots.length ? caption((p.to ? CLOSED(p) : "в работе") + " →", xr - 3, y, "end") : null;
+    const from = padL + Math.max(a, 0) * slotW, to = padL + (Math.min(b, slots.length - 1) + 1) * slotW;
+    const mid = caption(lifeSpan(p.from, p.to || DATA.today), (from + to) / 2, y, "middle", true);
+    // the middle note gives way to an arrow it would run into, and stays inside the plot
+    const w = mid.box.width, lo = left ? left.box.x + left.box.width + 10 : xl + 3, hi = right ? right.box.x - 10 : xr - 3;
+    const x0 = Math.min(Math.max(mid.box.x, lo), Math.max(lo, hi - w));
+    mid.setAttribute("transform", `translate(${x0 - mid.box.x},0)`);
+    notes.push(mid, left, right);
   }
   function hideSpan() {
     for (const e of cells.concat(others)) e.removeAttribute("opacity");
+    for (const n of notes.splice(0)) if (n) n.remove();
   }
   const spot = el("g", { "pointer-events": "none" });   // the plates of the hovered project, above all names
   // byStart: the names stand for the start of the project, so the card leads with it
@@ -966,16 +997,18 @@ function drawYear() {
           spot.appendChild(plate);
         };
         marks.push(mark);
+        // with the plate comes a date over the name: of the start where the
+        // project starts, of the closing where it was closed
+        let dated = null;
         (projMarks[projKey(p)] = projMarks[projKey(p)] || []).push(on => {
           mark(on); lit(on && "project");
+          if (dated) { dated.remove(); dated = null; }
+          if (!on) return;
+          const b = lb.getBBox();
+          dated = caption(byStart ? OPENED(p) : CLOSED(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
         });
         target.addEventListener("mouseenter", () => { markProject(p, true); showSpan(p); });
-        const began = { k: "Начат", v: human(addDays(p.from, 0)), b: byStart };
-        const ended = p.to ? { k: p.st === 3 ? "Завершён" : "Отменён", v: human(addDays(p.to, 0)), b: !byStart }
-          : { c: css(p.someday ? "--op2" : "--op1"), k: p.someday ? "В работе, Someday" : "В работе", v: "", b: !byStart };
-        target.addEventListener("mousemove", ev => showTip(ev, p.title,
-          (byStart ? [began, ended] : [ended, began]).concat([{ k: "Длительность", v: lifeSpan(p.from, p.to || DATA.today) }])));
-        target.addEventListener("mouseleave", () => { hideTip(); hideSpan(); markProject(p, false); });
+        target.addEventListener("mouseleave", () => { hideSpan(); markProject(p, false); });
         names.appendChild(lb);
         if (l.bare) names.appendChild(target);
       }

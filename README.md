@@ -39,9 +39,12 @@ closed later in the year, and the canceled ones. A canceled project is not
 drawn otherwise, and a project that lasted less than two days is not shown. The
 "show all" switch of the card names every project, both where it started and
 where it was closed. Copies of repeating projects are never shown. A
-project starts on the day its first task was completed. Hovering a name marks the weeks
-the project lived through, from its start (or its creation, if no task was
-completed) to its closing, or to today for an open one.
+project starts on the day its first task was completed. Hovering a name fades
+everything but the project: the weeks it lived through stay bright, from its
+start (or its creation, if no task was completed) to its closing, or to today
+for an open one. The dates of the start and of the closing and the length of
+the project are written beside it; a date outside the shown year is given with
+an arrow at that edge of the strip.
 
 The "year against year" card compares the shown year with the three before it:
 running totals by week of completed and of canceled tasks, and of started,
