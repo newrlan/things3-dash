@@ -710,6 +710,17 @@ for (const p of DATA.pr) {
 }
 const STARTED_IN = {};                            // {week start: [[title, start date, closing date, status, in Someday]]}
 for (const p of DATA.ps) (STARTED_IN[mondayOf(p[1])] = STARTED_IN[mondayOf(p[1])] || []).push(p);
+// closed projects in which no task was ever completed: they have not "started",
+// so they are not in DATA.ps, but their life is drawn from the day they were
+// created, and their name stands above that week
+const UNSTARTED_IN = {};                          // {week of creation: [[title, creation date, closing date, status]]}
+{
+  const known = new Set(DATA.ps.map(p => p[0] + "|" + p[1] + "|" + (p[2] || "")));
+  for (const [title, to, st, from] of DATA.pr) {
+    if (known.has(title + "|" + from + "|" + to)) continue;
+    (UNSTARTED_IN[mondayOf(from)] = UNSTARTED_IN[mondayOf(from)] || []).push([title, from, to, st]);
+  }
+}
 // [added, closed] in a week over all tasks, from its flow [new open, new closed, old closed]
 const FLOW_OF = ws => { const f = DATA.wk[ws].f; return [f[0] + f[1], f[1] + f[2]]; };
 // how dark a week is: by the tasks closed in it, against a busy week of the
@@ -719,7 +730,7 @@ const HEAT_TOP = (() => {
   return Math.max(1, v[Math.floor(v.length * 0.95)] || 1);
 })();
 const HEAT = n => 0.06 + 0.94 * Math.min(1, n / HEAT_TOP);
-// "show all" off: a canceled project is an unseen spot on the line of its week, a
+// "show all" off: a canceled project comes up only when its week is hovered, a
 // project that lasted less than two days is not shown, and a project closed
 // within the year is named only where it was closed. On: every project is named,
 // where it started and where it was closed.
@@ -801,7 +812,8 @@ function drawYear() {
   // above it they come up when their week is hovered
   const started = ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday]) => ({ title, from, to, st, someday })).filter(lasted);
   const endsHere = p => p.to && slots.some(q => q.ws === mondayOf(p.to));
-  const above = layOut(ws => started(ws).sort(byTitle), p => p.st === 2 || endsHere(p));
+  const unstarted = ws => (UNSTARTED_IN[ws] || []).map(([title, from, to, st]) => ({ title, from, to, st })).filter(lasted);
+  const above = layOut(ws => started(ws).concat(unstarted(ws)).sort(byTitle), p => p.st === 2 || endsHere(p));
   // completed projects first, canceled ones after them
   const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from]) => ({ title, from, to, st }))
     .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)), p => p.st === 2);
@@ -907,7 +919,7 @@ function drawYear() {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
     cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
     for (const e of others) e.setAttribute("opacity", FADE);
-    for (const k of keep[projKey(p)] || []) for (const e of [k.drop].concat(k.ghosts)) e.removeAttribute("opacity");
+    for (const k of keep[projKey(p)] || []) for (const e of k.ghosts) e.removeAttribute("opacity");
 
     // just over the strip: an arrow at the edge the project runs past, with the
     // date that lies beyond it, and the length of the project over its middle
@@ -941,7 +953,7 @@ function drawYear() {
       const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx,
         stroke: css("--ink-3"), "stroke-dasharray": "2 3" });
       const lit = mode => {
-        drop.setAttribute("stroke-width", mode ? 2 : 1);
+        drop.setAttribute("stroke-width", mode === "week" ? 2 : 1);
         drop.setAttribute("y2", mode === "week" ? lineTo(wk.deepest)
           : mode && !seen.length ? lineTo(Math.min(...unseen)) : rest);
         drop.setAttribute("visibility", mode || seen.length ? "visible" : "hidden");
@@ -965,14 +977,13 @@ function drawYear() {
           "text-anchor": l.anchor, fill: tone }, halo));
         lb.textContent = l.text;
         lb.style.cursor = "default";
-        // a hidden project is not drawn at all: neither its dot nor its name. Its
-        // place on the line still catches the pointer, and then, or when its week
-        // is hovered, both come up on the plate.
+        // a hidden project is not drawn at all, neither its dot nor its name, and
+        // its place does not react to the pointer. Both come up on the plate when
+        // its week is hovered.
         if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); ghosts.push(dot); }
         others.push(dot, lb);
-        // with the project stay bright the line of this week and the dots of its hidden projects
-        (keep[projKey(p)] = keep[projKey(p)] || []).push({ drop, ghosts });
-        const target = l.bare ? el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 6, fill: "transparent" }) : lb;
+        // with the project stay bright the dots of the hidden projects of this week
+        (keep[projKey(p)] = keep[projKey(p)] || []).push({ ghosts });
         // the name under the pointer turns bold with the line of its week, and
         // so does the other name of the same project, if it is in this year;
         // hovering a week does the same to every name of that week
@@ -999,18 +1010,22 @@ function drawYear() {
         marks.push(mark);
         // with the plate comes a date over the name: of the start where the
         // project starts, of the closing where it was closed
-        let dated = null;
+        let dated = null, lead = null;
         (projMarks[projKey(p)] = projMarks[projKey(p)] || []).push(on => {
           mark(on); lit(on && "project");
           if (dated) { dated.remove(); dated = null; }
+          if (lead) { lead.remove(); lead = null; }
           if (!on) return;
+          // the line is bold only from the strip to this project; the rest of it fades with the others
+          lead = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(l.r),
+            stroke: css("--ink-3"), "stroke-width": 2, "stroke-dasharray": "2 3" });
+          drops.appendChild(lead);
           const b = lb.getBBox();
           dated = caption(byStart ? OPENED(p) : CLOSED(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
         });
-        target.addEventListener("mouseenter", () => { markProject(p, true); showSpan(p); });
-        target.addEventListener("mouseleave", () => { hideSpan(); markProject(p, false); });
+        lb.addEventListener("mouseenter", () => { markProject(p, true); showSpan(p); });
+        lb.addEventListener("mouseleave", () => { hideSpan(); markProject(p, false); });
         names.appendChild(lb);
-        if (l.bare) names.appendChild(target);
       }
     }
   }
