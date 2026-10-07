@@ -814,6 +814,7 @@ function drawYear() {
   svg.appendChild(drops);
   const halo = { stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round" };
 
+  const cells = [];                               // the cell of every week, to fade the ones outside a project
   let month = -1;
   // {week start: [switch]}: turns the names of the week's projects and their
   // lines bold or back; filled in when the names are drawn
@@ -841,8 +842,9 @@ function drawYear() {
       lb.textContent = MON[m]; svg.appendChild(lb);
     }
     // a week without data keeps its place as a faint cell
-    svg.appendChild(el("rect", { x: x0 + 1, y: padT, width: slotW - 2, height: plotH, rx: 3,
-      fill: css(x.g ? "--cl1" : "--grid-b"), "fill-opacity": x.g ? HEAT(x.g[1]) : 0.6 }));
+    cells[i] = el("rect", { x: x0 + 1, y: padT, width: slotW - 2, height: plotH, rx: 3,
+      fill: css(x.g ? "--cl1" : "--grid-b"), "fill-opacity": x.g ? HEAT(x.g[1]) : 0.6 });
+    svg.appendChild(cells[i]);
     if (!x.g) return;
     const hit = el("rect", { x: x0, y: padT, width: slotW, height: plotH, fill: "transparent" });
     hit.addEventListener("mouseenter", () => {
@@ -874,26 +876,25 @@ function drawYear() {
   note.appendChild(noteBox); note.appendChild(noteText);
   svg.appendChild(note);
 
-  // hovering a name outlines the weeks the project lived through: from the week
-  // of its start to the week it was closed in (today for an open one). The
-  // outline is left open on a side where the project goes on: past the edge of
-  // the year, or beyond today for a project that is still open.
-  const span = el("g", { "pointer-events": "none" });
-  const edge = (iso, right) => {
+  // hovering a name fades everything that is not the project: the weeks outside
+  // its life, from the week of its start to the week it was closed in (today for
+  // an open one), and the names, dots and lines of the other projects
+  const FADE = 0.25;
+  const others = [];                              // every name, dot and line; the project's own are lifted again
+  const keep = {};                                // {project: [what stays bright with it]}
+  const weekOf = iso => {
     const i = slots.findIndex(q => q.ws === mondayOf(iso));
-    return i >= 0 ? { x: padL + (i + (right ? 1 : 0)) * slotW, cut: false }
-                  : { x: iso < slots[0].ws ? padL : W - padR, cut: true };
+    return i >= 0 ? i : iso < slots[0].ws ? -1 : slots.length;
   };
   function showSpan(p) {
-    const a = edge(p.from, false), b = edge(p.to || DATA.today, true);
-    if (!p.to) b.cut = true;
-    const l = a.x - 1, r = b.x + 1, t = padT - 3, u = padT + plotH + 3, R = 5;
-    const d = (a.cut ? `M${l},${t}` : `M${l + R},${t}`) +
-      (b.cut ? `H${r} M${r},${u}` : `H${r - R} Q${r},${t} ${r},${t + R} V${u - R} Q${r},${u} ${r - R},${u}`) +
-      (a.cut ? `H${l}` : `H${l + R} Q${l},${u} ${l},${u - R} V${t + R} Q${l},${t} ${l + R},${t}`);
-    span.appendChild(el("path", { d, fill: "none", stroke: css("--op1"), "stroke-width": 1, "stroke-linecap": "round" }));
+    const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
+    cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
+    for (const e of others) e.setAttribute("opacity", FADE);
+    for (const k of keep[projKey(p)] || []) for (const e of [k.drop].concat(k.ghosts)) e.removeAttribute("opacity");
   }
-  // yOf: baseline of a row; the line of the week runs from the column to its last name
+  function hideSpan() {
+    for (const e of cells.concat(others)) e.removeAttribute("opacity");
+  }
   const spot = el("g", { "pointer-events": "none" });   // the plates of the hovered project, above all names
   // byStart: the names stand for the start of the project, so the card leads with it
   function drawNames(layout, yOf, lineFrom, lineTo, byStart) {
@@ -917,6 +918,7 @@ function drawYear() {
       };
       lit(false);
       drops.appendChild(drop);
+      others.push(drop);
       const marks = [];                           // one switch per name of the week
       (weekMarks[wk.x.ws] = weekMarks[wk.x.ws] || []).push(on => {
         lit(on && "week");
@@ -936,6 +938,9 @@ function drawYear() {
         // place on the line still catches the pointer, and then, or when its week
         // is hovered, both come up on the plate.
         if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); ghosts.push(dot); }
+        others.push(dot, lb);
+        // with the project stay bright the line of this week and the dots of its hidden projects
+        (keep[projKey(p)] = keep[projKey(p)] || []).push({ drop, ghosts });
         const target = l.bare ? el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 6, fill: "transparent" }) : lb;
         // the name under the pointer turns bold with the line of its week, and
         // so does the other name of the same project, if it is in this year;
@@ -956,6 +961,7 @@ function drawYear() {
           const d2 = dot.cloneNode(), t2 = lb.cloneNode(true);
           d2.setAttribute("stroke", css("--pick")); t2.setAttribute("stroke", css("--pick"));
           t2.removeAttribute("visibility"); d2.removeAttribute("visibility");
+          t2.removeAttribute("opacity"); d2.removeAttribute("opacity");
           plate.appendChild(d2); plate.appendChild(t2);
           spot.appendChild(plate);
         };
@@ -963,13 +969,13 @@ function drawYear() {
         (projMarks[projKey(p)] = projMarks[projKey(p)] || []).push(on => {
           mark(on); lit(on && "project");
         });
-        target.addEventListener("mouseenter", () => { showSpan(p); markProject(p, true); });
+        target.addEventListener("mouseenter", () => { markProject(p, true); showSpan(p); });
         const began = { k: "Начат", v: human(addDays(p.from, 0)), b: byStart };
         const ended = p.to ? { k: p.st === 3 ? "Завершён" : "Отменён", v: human(addDays(p.to, 0)), b: !byStart }
           : { c: css(p.someday ? "--op2" : "--op1"), k: p.someday ? "В работе, Someday" : "В работе", v: "", b: !byStart };
         target.addEventListener("mousemove", ev => showTip(ev, p.title,
           (byStart ? [began, ended] : [ended, began]).concat([{ k: "Длительность", v: lifeSpan(p.from, p.to || DATA.today) }])));
-        target.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; markProject(p, false); });
+        target.addEventListener("mouseleave", () => { hideTip(); hideSpan(); markProject(p, false); });
         names.appendChild(lb);
         if (l.bare) names.appendChild(target);
       }
@@ -983,7 +989,6 @@ function drawYear() {
   const done = all.filter(p => p.st === 3).length, dropped = all.length - done;
   // every project started in the year, named above the strip or not
   const opened = slots.reduce((n, x) => n + started(x.ws).length, 0);
-  svg.appendChild(span);
   svg.appendChild(names);
   svg.appendChild(spot);
   const H2 = below.rows ? top + below.rows * rowH + 4 : H;
