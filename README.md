@@ -26,7 +26,8 @@ current one.
    open, tasks added this week and closed, tasks added earlier and closed.
 4. **Projects of the week.** One row per active project: closed tasks to the
    right, open tasks to the left, each split into "created earlier" and
-   "created this week".
+   "created this week". A project name is a link that opens the project
+   in Things.
 
 The **Year** tab shows the projects of a year along a strip of weeks, with
 navigation by year. A cell of the strip is one week: the darker it is, the more
@@ -39,7 +40,7 @@ closed later in the year, and the canceled ones. A canceled project is not
 drawn otherwise, and a project that lasted less than two days is not shown. The
 "show all" switch of the card names every project, both where it started and
 where it was closed. Copies of repeating projects are never shown. A
-project starts on the day its first task was completed. Hovering a name fades
+project starts on the day its first task was completed. A name is a link that opens the project in Things. Hovering a name fades
 everything but the project: the weeks it lived through stay bright, from its
 start (or its creation, if no task was completed) to its closing, or to today
 for an open one. The dates of the start and of the closing and the length of

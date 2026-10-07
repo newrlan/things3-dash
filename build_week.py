@@ -400,7 +400,7 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
             continue
         oo, on, coc, coca, cnc, cnca = v[3:]
         state = "open" if not closed_on else ("wk" if closed_on <= end else "later")
-        rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on])
+        rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on, pu])
     return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed],
             "c": [completed, canceled], "p": rows}
 
@@ -421,17 +421,18 @@ def project_starts(con, tasks):
 
 def year_projects(con, tasks, someday):
     """Projects for the year tab, copies of repeating projects left out:
-    closed ones as [title, closing date, status, start date], where a project
+    closed ones as [title, closing date, status, start date, uuid], where a project
     without a completed to-do starts on the day it was created, and the ones
-    that have started as [title, start date, closing date, status, in Someday]."""
+    that have started as [title, start date, closing date, status, in Someday, uuid].
+    The uuid is what a things:///show?id= link takes."""
     started = project_starts(con, tasks)
     closed, starts = [], []
     for u, t, c, s, st in con.execute("""SELECT project_uuid, title, created, closed, status FROM project
                                          WHERE NOT repeating ORDER BY closed, title"""):
         if u in started:
-            starts.append([t, min(started[u], s or started[u]), s, st, int(u in someday)])
+            starts.append([t, min(started[u], s or started[u]), s, st, int(u in someday), u])
         if s and st in (2, 3):
-            closed.append([t, s, st, min(started.get(u, c), s)])
+            closed.append([t, s, st, min(started.get(u, c), s), u])
     return closed, sorted(starts, key=lambda x: (x[1], x[0]))
 
 

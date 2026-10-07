@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the projects closed in it under the strip; hovering a name
   marks the weeks from the start of the project to its closing. Copies of
   repeating projects are left out.
+- Project names are links that open the project in Things, on the year tab and
+  in "Projects of the week".
 - Year tab: canceled projects are shown only on hover; the "show all" switch
   names every project.
 - Year tab: year against year, running totals by week of completed and of
