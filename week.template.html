@@ -760,38 +760,46 @@ function drawYear() {
   // before anything is drawn, because they push the plot down.
   const ctx = document.createElement("canvas").getContext("2d");
   ctx.font = "500 11px " + getComputedStyle(document.body).fontFamily;
-  function layOut(pick) {
+  // hide(p): the project is not drawn until its week is hovered. Such names take
+  // no room among the others: they queue on the line of their week right after
+  // its drawn names, and come up on plates over whatever is there.
+  function layOut(pick, hide) {
     const rows = [], weeks = [];
+    let depth = 0;
     slots.forEach((x, i) => {
       const ps = pick(x.ws);
       if (!ps.length) return;
-      const cx = Math.round(padL + i * slotW + slotW / 2) + .5, labels = [];
+      const cx = Math.round(padL + i * slotW + slotW / 2) + .5, labels = [], later = [];
       for (const p of ps) {
         const text = p.title.length > 30 ? p.title.slice(0, 29) + "…" : p.title;
         const w = ctx.measureText(text).width, left = cx + 5 + w > W - padR;
-        // a bare dot takes a row on its own line only: names of other weeks pass it
-        const bare = !showAll && p.st === 2;
-        const a = bare ? cx - 4 : left ? cx - 5 - w : cx + 5, b = bare ? cx + 4 : a + w;
+        const l = { p, text, bare: !showAll && hide(p), x: left ? cx - 5 : cx + 5, anchor: left ? "end" : "start" };
+        if (l.bare) { later.push(l); continue; }
+        const a = left ? cx - 5 - w : cx + 5, b = a + w;
         let r = 0;
         while ((rows[r] || []).some(([u, v]) => a < v + 10 && b > u - 10)) r++;
         (rows[r] = rows[r] || []).push([a, b]);
-        labels.push({ p, text, r, bare, x: left ? cx - 5 : cx + 5, anchor: left ? "end" : "start" });
+        l.r = r; labels.push(l);
       }
-      weeks.push({ x, cx, labels, deepest: Math.max(...labels.map(l => l.r)) });
+      let next = Math.max(-1, ...labels.map(l => l.r)) + 1;
+      for (const l of later) { l.r = next++; labels.push(l); }
+      depth = Math.max(depth, next);
+      weeks.push({ x, cx, labels, deepest: next - 1 });
     });
-    return { weeks, rows: rows.length };
+    return { weeks, rows: Math.max(rows.length, depth) };
   }
   const byTitle = (a, b) => a.title.localeCompare(b.title);
   // a project closed less than two days after its start is not shown
   const lasted = p => showAll || !p.to || (addDays(p.to, 0) - addDays(p.from, 0)) / 864e5 >= 2;
-  // above the strip only the projects that were not closed within this year: the
-  // ones closed in it are named under the strip, where they end
+  // above the strip only the projects that were not closed within this year are
+  // drawn: the ones closed in it are named under the strip, where they end, and
+  // above it they come up when their week is hovered
   const started = ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday]) => ({ title, from, to, st, someday })).filter(lasted);
   const endsHere = p => p.to && slots.some(q => q.ws === mondayOf(p.to));
-  const above = layOut(ws => started(ws).filter(p => showAll || !endsHere(p)).sort(byTitle));
+  const above = layOut(ws => started(ws).sort(byTitle), p => p.st === 2 || endsHere(p));
   // completed projects first, canceled ones after them
   const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from]) => ({ title, from, to, st }))
-    .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)));
+    .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)), p => p.st === 2);
 
   const gapT = 20;                                // air above the strip, to match the names under it
   const padT = 10 + (above.rows ? above.rows * rowH + 8 + gapT : 0);
@@ -914,7 +922,7 @@ function drawYear() {
           "text-anchor": l.anchor, fill: tone }, halo));
         lb.textContent = l.text;
         lb.style.cursor = "default";
-        // a canceled project is not drawn at all: neither its dot nor its name. Its
+        // a hidden project is not drawn at all: neither its dot nor its name. Its
         // place on the line still catches the pointer, and then, or when its week
         // is hovered, both come up on the plate.
         if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); }

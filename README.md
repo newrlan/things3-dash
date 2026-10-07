@@ -34,8 +34,9 @@ tasks were closed in it.
 
 Under the strip are the projects closed in each week, above it the projects
 started in the week and not closed within the year, each group on a dashed line
-from the week. A canceled project is not drawn; its name comes up when its place
-on the line or its week is hovered, and a project that lasted less than two days is not shown. The
+from the week. Hovering a week brings up the rest: the projects started in it that were
+closed later in the year, and the canceled ones. A canceled project is not
+drawn otherwise, and a project that lasted less than two days is not shown. The
 "show all" switch of the card names every project, both where it started and
 where it was closed. Copies of repeating projects are never shown. A
 project starts on the day its first task was completed. Hovering a name marks the weeks
