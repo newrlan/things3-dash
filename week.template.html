@@ -9,7 +9,7 @@
     color-scheme: light;
     --surface:#fcfcfb; --card:#ffffff; --border:#e6e5e1; --line:#3a3936;
     --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#83817b;
-    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6; --touch:#bdbbb5;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6; --touch:#bdbbb5; --pick:#e3ecf7;
     --cl1:#1c5cab; --cl2:#6da7ec; --op1:#b8322f; --op2:#f0918e; --grid-b:#eceae6;
   }
   @media (prefers-color-scheme: dark) {
@@ -17,7 +17,7 @@
       color-scheme: dark;
       --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
       --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
-      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56; --pick:#1f2f47;
       --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
     }
   }
@@ -25,7 +25,7 @@
     color-scheme: dark;
     --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
     --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
-    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56; --pick:#1f2f47;
       --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
   }
   * { box-sizing:border-box; }
@@ -153,7 +153,8 @@
 </div>
 
 <div class="card">
-  <div class="bhd"><h2>Проекты года</h2></div>
+  <div class="bhd"><h2>Проекты года</h2>
+    <label style="margin-left:auto"><input type="checkbox" id="yall"> show all</label></div>
   <div class="chart" id="yflow"></div>
 </div>
 
@@ -717,6 +718,11 @@ const HEAT_TOP = (() => {
   return Math.max(1, v[Math.floor(v.length * 0.95)] || 1);
 })();
 const HEAT = n => 0.06 + 0.94 * Math.min(1, n / HEAT_TOP);
+// "show all" off: a canceled project is an unseen spot on the line of its week, a
+// project that lasted less than two days is not shown, and a project closed
+// within the year is named only where it was closed. On: every project is named,
+// where it started and where it was closed.
+let showAll = false;
 function drawYear() {
   const node = document.getElementById("yflow");
   document.getElementById("ylabel").textContent = year;
@@ -763,11 +769,13 @@ function drawYear() {
       for (const p of ps) {
         const text = p.title.length > 30 ? p.title.slice(0, 29) + "…" : p.title;
         const w = ctx.measureText(text).width, left = cx + 5 + w > W - padR;
-        const a = left ? cx - 5 - w : cx + 5, b = a + w;
+        // a bare dot takes a row on its own line only: names of other weeks pass it
+        const bare = !showAll && p.st === 2;
+        const a = bare ? cx - 4 : left ? cx - 5 - w : cx + 5, b = bare ? cx + 4 : a + w;
         let r = 0;
         while ((rows[r] || []).some(([u, v]) => a < v + 10 && b > u - 10)) r++;
         (rows[r] = rows[r] || []).push([a, b]);
-        labels.push({ p, text, r, x: left ? b : a, anchor: left ? "end" : "start" });
+        labels.push({ p, text, r, bare, x: left ? cx - 5 : cx + 5, anchor: left ? "end" : "start" });
       }
       weeks.push({ x, cx, labels, deepest: Math.max(...labels.map(l => l.r)) });
     });
@@ -775,9 +783,12 @@ function drawYear() {
   }
   const byTitle = (a, b) => a.title.localeCompare(b.title);
   // a project closed less than two days after its start is not shown
-  const lasted = p => !p.to || (addDays(p.to, 0) - addDays(p.from, 0)) / 864e5 >= 2;
-  const above = layOut(ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday]) => ({ title, from, to, st, someday }))
-    .filter(lasted).sort(byTitle));
+  const lasted = p => showAll || !p.to || (addDays(p.to, 0) - addDays(p.from, 0)) / 864e5 >= 2;
+  // above the strip only the projects that were not closed within this year: the
+  // ones closed in it are named under the strip, where they end
+  const started = ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday]) => ({ title, from, to, st, someday })).filter(lasted);
+  const endsHere = p => p.to && slots.some(q => q.ws === mondayOf(p.to));
+  const above = layOut(ws => started(ws).filter(p => showAll || !endsHere(p)).sort(byTitle));
   // completed projects first, canceled ones after them
   const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from]) => ({ title, from, to, st }))
     .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)));
@@ -845,8 +856,9 @@ function drawYear() {
   });
   svg.appendChild(pick);
   const note = el("g", { visibility: "hidden", "pointer-events": "none" });
-  const noteBox = el("rect", { y: padT + 1, height: plotH - 2, rx: 6, fill: css("--card"), stroke: css("--border"), "stroke-width": 1 });
-  const noteText = el("text", { y: padT + plotH / 2 + 4, "font-size": 12, "font-weight": 500, fill: css("--ink") });
+  const lift = 12;                                 // the note sits a little above the middle of the strip
+  const noteBox = el("rect", { y: padT + 1 - lift, height: plotH - 2, rx: 6, fill: css("--card"), stroke: css("--border"), "stroke-width": 1 });
+  const noteText = el("text", { y: padT + plotH / 2 + 4 - lift, "font-size": 12, "font-weight": 500, fill: css("--ink") });
   note.appendChild(noteBox); note.appendChild(noteText);
   svg.appendChild(note);
 
@@ -870,39 +882,78 @@ function drawYear() {
     span.appendChild(el("path", { d, fill: "none", stroke: css("--op1"), "stroke-width": 1, "stroke-linecap": "round" }));
   }
   // yOf: baseline of a row; the line of the week runs from the column to its last name
+  const spot = el("g", { "pointer-events": "none" });   // the plates of the hovered project, above all names
   // byStart: the names stand for the start of the project, so the card leads with it
   function drawNames(layout, yOf, lineFrom, lineTo, byStart) {
     for (const wk of layout.weeks) {
-      const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(wk.deepest),
-        stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" });
-      drops.appendChild(drop);
-      const lbs = [];
-      (weekMarks[wk.x.ws] = weekMarks[wk.x.ws] || []).push(on => {
+      // the line runs to the last name that is drawn; the part that leads on to
+      // the unseen projects, or the whole line of a week that has only such
+      // projects, appears when the week or one of them is hovered
+      const seen = wk.labels.filter(l => !l.bare).map(l => l.r);
+      const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx,
+        stroke: css("--ink-3"), "stroke-dasharray": "2 3" });
+      const lit = on => {
         drop.setAttribute("stroke-width", on ? 2 : 1);
-        for (const lb of lbs) lb.setAttribute("font-weight", on ? 700 : 500);
+        drop.setAttribute("y2", on ? lineTo(wk.deepest) : seen.length ? lineTo(Math.max(...seen)) : lineFrom(wk.x));
+        drop.setAttribute("visibility", on || seen.length ? "visible" : "hidden");
+      };
+      lit(false);
+      drops.appendChild(drop);
+      const marks = [];                           // one switch per name of the week
+      (weekMarks[wk.x.ws] = weekMarks[wk.x.ws] || []).push(on => {
+        lit(on);
+        for (const mark of marks) mark(on);
       });
       for (const l of wk.labels) {
         const p = l.p;
         const tone = css(!p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
         // a dot of the project's colour on the line of the week, level with the name
-        names.appendChild(el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 3, fill: tone, stroke: css("--card"), "stroke-width": 1.5 }));
+        const dot = el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 3, fill: tone, stroke: css("--card"), "stroke-width": 1.5 });
+        names.appendChild(dot);
         const lb = el("text", Object.assign({ x: l.x + (l.anchor === "end" ? -2 : 2), y: yOf(l.r), "font-size": 11, "font-weight": 500,
           "text-anchor": l.anchor, fill: tone }, halo));
         lb.textContent = l.text;
         lb.style.cursor = "default";
+        // a canceled project is not drawn at all: neither its dot nor its name. Its
+        // place on the line still catches the pointer, and then, or when its week
+        // is hovered, both come up on the plate.
+        if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); }
+        const target = l.bare ? el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 6, fill: "transparent" }) : lb;
         // the name under the pointer turns bold with the line of its week, and
-        // so does the other name of the same project, if it is in this year
+        // so does the other name of the same project, if it is in this year;
+        // hovering a week does the same to every name of that week
+        // ... and both are lifted onto a plate, over the names around them. The plate is
+        // a pale tint of the blue of the strip.
+        let plate = null;
+        const mark = on => {
+          lb.setAttribute("font-weight", on ? 700 : 500);
+          if (plate) { plate.remove(); plate = null; }
+          if (!on) return;
+          const b = lb.getBBox(), x1 = Math.min(b.x, wk.cx - 5) - 4, x2 = Math.max(b.x + b.width, wk.cx + 5) + 5;
+          plate = el("g");
+          // no taller than a row, so the plates of a week stack without covering each other
+          plate.appendChild(el("rect", { x: x1, y: b.y - 1, width: x2 - x1, height: b.height + 2, rx: 5,
+            fill: css("--pick") }));
+          // on the plate the dot and the halo of the text take its colour, not the card's
+          const d2 = dot.cloneNode(), t2 = lb.cloneNode(true);
+          d2.setAttribute("stroke", css("--pick")); t2.setAttribute("stroke", css("--pick"));
+          t2.removeAttribute("visibility"); d2.removeAttribute("visibility");
+          plate.appendChild(d2); plate.appendChild(t2);
+          spot.appendChild(plate);
+        };
+        marks.push(mark);
         (projMarks[projKey(p)] = projMarks[projKey(p)] || []).push(on => {
-          lb.setAttribute("font-weight", on ? 700 : 500); drop.setAttribute("stroke-width", on ? 2 : 1);
+          mark(on); lit(on);
         });
-        lb.addEventListener("mouseenter", () => { showSpan(p); markProject(p, true); });
+        target.addEventListener("mouseenter", () => { showSpan(p); markProject(p, true); });
         const began = { k: "Начат", v: human(addDays(p.from, 0)), b: byStart };
         const ended = p.to ? { k: p.st === 3 ? "Завершён" : "Отменён", v: human(addDays(p.to, 0)), b: !byStart }
           : { c: css(p.someday ? "--op2" : "--op1"), k: p.someday ? "В работе, Someday" : "В работе", v: "", b: !byStart };
-        lb.addEventListener("mousemove", ev => showTip(ev, p.title,
+        target.addEventListener("mousemove", ev => showTip(ev, p.title,
           (byStart ? [began, ended] : [ended, began]).concat([{ k: "Длительность", v: lifeSpan(p.from, p.to || DATA.today) }])));
-        lb.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; markProject(p, false); });
-        names.appendChild(lb); lbs.push(lb);
+        target.addEventListener("mouseleave", () => { hideTip(); span.innerHTML = ""; markProject(p, false); });
+        names.appendChild(lb);
+        if (l.bare) names.appendChild(target);
       }
     }
   }
@@ -911,9 +962,11 @@ function drawYear() {
   drawNames(below, r => top + r * rowH + 11, () => padT + plotH + 2, r => top + r * rowH + 13);
   const all = below.weeks.flatMap(wk => wk.labels.map(l => l.p));
   const done = all.filter(p => p.st === 3).length, dropped = all.length - done;
-  const opened = above.weeks.reduce((n, wk) => n + wk.labels.length, 0);
+  // every project started in the year, named above the strip or not
+  const opened = slots.reduce((n, x) => n + started(x.ws).length, 0);
   svg.appendChild(span);
   svg.appendChild(names);
+  svg.appendChild(spot);
   const H2 = below.rows ? top + below.rows * rowH + 4 : H;
   svg.setAttribute("height", H2); svg.setAttribute("viewBox", `0 0 ${W} ${H2}`);
   node.innerHTML = ""; node.appendChild(svg);
@@ -1043,6 +1096,7 @@ ysel.innerHTML = YEARS.slice().reverse().map(y => `<option value="${y}">${y}</op
 document.getElementById("yprev").onclick = () => { year = YEARS[YEARS.indexOf(year) - 1]; drawYear(); };
 document.getElementById("ynext").onclick = () => { year = YEARS[YEARS.indexOf(year) + 1]; drawYear(); };
 ysel.onchange = () => { year = +ysel.value; drawYear(); };
+document.getElementById("yall").onchange = ev => { showAll = ev.target.checked; drawYear(); };
 document.getElementById("ytoday").onclick = () => { year = yearOf(DATA.current); drawYear(); };
 addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTimeout(render, 150); });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);

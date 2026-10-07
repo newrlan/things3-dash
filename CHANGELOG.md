@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the projects closed in it under the strip; hovering a name
   marks the weeks from the start of the project to its closing. Copies of
   repeating projects are left out.
+- Year tab: canceled projects are shown only on hover; the "show all" switch
+  names every project.
 - Year tab: year against year, running totals by week of completed and of
   canceled tasks, and of started, completed and canceled projects, for the shown
   year and the three before it.
