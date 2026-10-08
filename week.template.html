@@ -44,8 +44,6 @@
   .top { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
   h1 { font-size:25px; font-weight:640; letter-spacing:-.02em; margin:0; }
   .top #refresh { margin-left:auto; }
-  .duo { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:24px; }
-  @media (max-width: 1000px) { .duo { grid-template-columns:minmax(0, 1fr); } }
   .sub { font-size:12px; color:var(--ink-2); margin-bottom:6px; }
   .tabs { display:flex; gap:4px; margin-left:8px; }
   .tabs button.on { background:var(--card); border-color:var(--ink-3); font-weight:600; }
@@ -160,16 +158,9 @@
 </div>
 
 <div class="card">
-  <div class="bhd"><h2>Год к году</h2></div>
-  <div class="duo">
-    <div><div class="sub">Выполнено задач с начала года</div><div class="chart" id="yoy-tasks"></div></div>
-    <div><div class="sub">Отменено задач с начала года</div><div class="chart" id="yoy-tasks-canceled"></div></div>
-  </div>
-  <div class="duo" style="margin-top:18px">
-    <div><div class="sub">Открыто проектов с начала года</div><div class="chart" id="yoy-started"></div></div>
-    <div><div class="sub">Завершено проектов с начала года</div><div class="chart" id="yoy-projects"></div></div>
-    <div><div class="sub">Отменено проектов с начала года</div><div class="chart" id="yoy-projects-canceled"></div></div>
-  </div>
+  <div class="bhd"><h2>Год к году</h2><label id="yoy-when"></label></div>
+  <div class="chart" id="yoy"></div>
+  <div class="legend" id="yoy-legend"></div>
 </div>
 </div>
 </div>
@@ -745,14 +736,7 @@ function drawYear() {
   document.getElementById("yprev").disabled = year <= YEARS[0];
   document.getElementById("ynext").disabled = year >= YEARS[YEARS.length - 1];
   document.getElementById("ytoday").disabled = year === yearOf(DATA.current);
-  // all tasks, as in the chart above; projects by their first completed
-  // task and by their completion, repeating ones left out
-  // DATA.wk[ws].c is [completed, canceled] tasks of the week; a project's status is 3 or 2
-  drawYoY("yoy-tasks", ws => DATA.wk[ws] ? DATA.wk[ws].c[0] : 0);
-  drawYoY("yoy-tasks-canceled", ws => DATA.wk[ws] ? DATA.wk[ws].c[1] : 0);
-  drawYoY("yoy-started", ws => (STARTED_IN[ws] || []).length);
-  drawYoY("yoy-projects", ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 3).length);
-  drawYoY("yoy-projects-canceled", ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 2).length);
+  drawYoY();
 
   let added = 0, closed = 0;
   const slots = weeksOf(year).map(ws => {
@@ -1065,72 +1049,91 @@ function drawYear() {
   node.appendChild(leg);
 }
 
-// year against year: a running total by week of the year, the shown year over
-// the three before it. The shown year is the strong line, earlier years fade
-// with age; every line is named at its end.
-function drawYoY(id, perWeek) {
-  const node = document.getElementById(id);
+// year against year, in the language of the strip above: one row per year, the
+// shown year first. A row is the totals of the year up to the same week (tasks
+// completed and canceled, projects started, completed and canceled) and, for
+// the earlier years, the year's weeks as cells, the darker the more tasks were
+// closed. The shown year has no cells here: its strip is the chart above. In
+// the earlier years the weeks after that week are faded: they are not counted.
+const YOY = [
+  { group: "задачи",  name: "сделано",   per: ws => DATA.wk[ws] ? DATA.wk[ws].c[0] : 0 },   // .c is [completed, canceled] tasks
+  { group: "задачи",  name: "отменено",  per: ws => DATA.wk[ws] ? DATA.wk[ws].c[1] : 0 },
+  { group: "проекты", name: "открыто",   per: ws => (STARTED_IN[ws] || []).length },
+  { group: "проекты", name: "завершено", per: ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 3).length },
+  { group: "проекты", name: "отменено",  per: ws => (CLOSED_IN[ws] || []).filter(p => p[2] === 2).length }
+];
+function drawYoY() {
+  const node = document.getElementById("yoy");
   const years = [0, 1, 2, 3].map(k => year - k).filter(y => YEARS.includes(y));
-  const series = years.map((y, k) => {
-    let sum = 0;
-    const pts = weeksOf(y).filter(ws => ws <= DATA.current).map(ws => sum += perWeek(ws));
-    return { y, pts, color: css(k ? "--ink-3" : "--cl1"), opacity: [1, .85, .5, .28][k], width: k ? 1.5 : 2.5 };
-  });
-  const top = Math.max(1, ...series.map(q => q.pts[q.pts.length - 1] || 0));
+  const now = year === yearOf(DATA.current);
+  const fmt = v => String(Math.round(v)).replace(/\B(?=(\d{3})+$)/g, " ");
+  const upto = weeksOf(year).filter(ws => ws <= DATA.current).length;           // weeks counted in every year
 
-  const W = Math.max(300, node.clientWidth || 500);
-  const padL = 40, padR = 38, padT = 8, plotH = 200, padB = 20, H = padT + plotH + padB;
+  const W = Math.max(640, node.clientWidth || 1000);
+  const labW = 44, numW = 66, gap = 18, head = 34, rowH = 30, cellH = 18;
+  const stripW = W - labW - gap - numW * YOY.length, slotW = stripW / 53;
+  const H = head + years.length * rowH + 2;
   const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
-  const ticks = niceTicks(top, 4), yMax = ticks[ticks.length - 1];
-  const slotW = (W - padL - padR) / 53;
-  const X = i => padL + (i + .5) * slotW, Y = v => padT + (1 - v / yMax) * plotH;
-
-  ticks.forEach(t => {
-    const y = Math.round(Y(t)) + .5;
-    svg.appendChild(el("line", { x1: padL, y1: y, x2: W - padR, y2: y,
-      stroke: css(t ? "--grid-b" : "--line"), "stroke-width": 1 }));
-    const lb = el("text", { class: "val", x: padL - 6, y: y + 3, "text-anchor": "end" });
+  const text = (t, x, y, anchor, strong) => {
+    const lb = el("text", { class: "val", x, y, "text-anchor": anchor, "font-size": strong ? 12 : 10 });
+    if (strong) { lb.style.fill = css("--ink"); lb.style.fontWeight = 700; }       // over the grey of .val
     lb.textContent = t; svg.appendChild(lb);
-  });
+    return lb;
+  };
+
+  // the numbers come first, the strips after them. Head: the measures over the
+  // numbers; the months of the strips stand in the row of the shown year
+  const sx = labW + numW * YOY.length + gap;                                    // left edge of the strips
   let month = -1;
-  weeksOf(year).forEach((ws, i) => {
+  if (years.length > 1) weeksOf(year).forEach((ws, i) => {
     const m = addDays(ws, 3).getMonth();
-    if (m === month) return;
-    month = m;
-    if (m % 2) return;                              // every other month: the panel is narrow
-    const lb = el("text", { class: "val", x: X(i) - slotW / 2, y: H - 5 });
-    lb.textContent = MON[m]; svg.appendChild(lb);
+    if (m !== month) { month = m; text(MON[m], sx + i * slotW + 2, head + cellH - 5, "start"); }
+  });
+  const nx = k => labW + numW * k + numW - 6;                                   // right edge of a number column
+  YOY.forEach((m, k) => {
+    if (!k || YOY[k - 1].group !== m.group) text(m.group, nx(k) - numW + 14, head - 21, "start").style.fill = css("--ink-2");
+    text(m.name, nx(k), head - 8, "end");
   });
 
-  // earlier years first, the shown year on top
-  series.slice().reverse().forEach(q => {
-    if (!q.pts.length) return;
-    svg.appendChild(el("polyline", { points: q.pts.map((v, i) => X(i) + "," + Y(v)).join(" "), fill: "none",
-      stroke: q.color, "stroke-opacity": q.opacity, "stroke-width": q.width,
-      "stroke-linejoin": "round", "stroke-linecap": "round" }));
+  years.forEach((y, r) => {
+    const own = y === year, top = head + r * rowH, weeks = weeksOf(y);
+    text(y, labW - 10, top + cellH - 5, "end", own);
+    let sum = 0;
+    if (!own) weeks.forEach((ws, i) => {
+      const f = DATA.wk[ws] ? FLOW_OF(ws) : null, counted = i < upto;
+      const cell = el("rect", { x: sx + i * slotW + 1, y: top, width: Math.max(2, slotW - 2), height: cellH, rx: 3,
+        fill: css(f ? "--cl1" : "--grid-b"), "fill-opacity": f ? HEAT(f[1]) : 0.6 });
+      if (!counted && f) cell.setAttribute("opacity", 0.3);
+      svg.appendChild(cell);
+      if (!f) return;
+      if (counted) sum += f[1];
+      const total = sum;
+      cell.addEventListener("mousemove", ev => showTip(ev, wlabel(ws), [
+        { c: css("--cl1"), k: "Закрыто за неделю", v: f[1], b: true }
+      ].concat(counted ? [{ k: "С начала года", v: fmt(total) }] : [{ k: "После " + upto + "-й недели", v: "не в счёте" }])));
+      cell.addEventListener("mouseleave", hideTip);
+    });
+    YOY.forEach((m, k) => {
+      const v = weeks.slice(0, upto).reduce((a, ws) => a + m.per(ws), 0), all = weeks.reduce((a, ws) => a + m.per(ws), 0);
+      const lb = text(fmt(v), nx(k), top + cellH - 5, "end", own);
+      if (!own) { lb.setAttribute("font-size", 12); lb.style.fill = css("--ink-2"); }
+      lb.style.cursor = "default";
+      lb.addEventListener("mousemove", ev => showTip(ev, y + " · " + m.group + ", " + m.name,
+        [{ k: now ? "К " + upto + "-й неделе" : "За год", v: fmt(v), b: true }].concat(now && !own ? [{ k: "За весь год", v: fmt(all) }] : [])));
+      lb.addEventListener("mouseleave", hideTip);
+    });
   });
-  // the year at the end of its line; labels that would collide are pushed apart
-  const ends = series.filter(q => q.pts.length).map(q => ({ q, x: X(q.pts.length - 1) + 6, y: Y(q.pts[q.pts.length - 1]) + 3 }))
-    .sort((a, b) => a.y - b.y);
-  ends.forEach((e, i) => { if (i && e.y - ends[i - 1].y < 11 && Math.abs(e.x - ends[i - 1].x) < 30) e.y = ends[i - 1].y + 11; });
-  for (const e of ends) {
-    const lb = el("text", { x: Math.min(e.x, W - 30), y: e.y, "font-size": 10, "font-weight": e.q.y === year ? 700 : 500,
-      fill: css(e.q.y === year ? "--ink" : "--ink-3"), stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke" });
-    lb.textContent = e.q.y; svg.appendChild(lb);
-  }
-
-  const mark = el("line", { y1: padT, y2: padT + plotH, stroke: css("--ink-3"), "stroke-width": 1, visibility: "hidden" });
-  svg.appendChild(mark);
-  const hit = el("rect", { x: padL, y: padT, width: W - padL - padR, height: plotH, fill: "transparent" });
-  hit.addEventListener("mousemove", ev => {
-    const i = Math.max(0, Math.min(52, Math.floor((ev.clientX - svg.getBoundingClientRect().left - padL) / slotW)));
-    mark.setAttribute("x1", X(i)); mark.setAttribute("x2", X(i)); mark.setAttribute("visibility", "visible");
-    showTip(ev, "Неделя " + (i + 1), series.filter(q => q.pts[i] !== undefined)
-      .map(q => ({ c: q.color, k: q.y, v: q.pts[i], b: q.y === year })));
-  });
-  hit.addEventListener("mouseleave", () => { hideTip(); mark.setAttribute("visibility", "hidden"); });
-  svg.appendChild(hit);
   node.innerHTML = ""; node.appendChild(svg);
+
+  document.getElementById("yoy-when").textContent = now ? "к " + upto + "-й неделе года" : "за весь год";
+  const leg = document.getElementById("yoy-legend");
+  leg.innerHTML = "";
+  const item = (style, label) => {
+    const it = document.createElement("span"), sw = document.createElement("i");
+    sw.style.cssText = style; it.appendChild(sw); it.appendChild(document.createTextNode(label)); leg.appendChild(it);
+  };
+  item(`width:44px; background:linear-gradient(90deg, ${css("--cl1")}10, ${css("--cl1")})`, "Закрыто задач за неделю");
+  if (now && years.length > 1) item(`width:14px; background:${css("--cl1")}; opacity:.3`, "недели после текущей, в числа не входят");
 }
 
 // ---- tabs -------------------------------------------------------------------

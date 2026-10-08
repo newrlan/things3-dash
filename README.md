@@ -47,10 +47,11 @@ for an open one. The dates of the start and of the closing and the length of
 the project are written beside it; a date outside the shown year is given with
 an arrow at that edge of the strip.
 
-The "year against year" card compares the shown year with the three before it:
-running totals by week of completed and of canceled tasks, and of started,
-completed and canceled projects. A project starts on the day its first task
-was completed.
+The "year against year" card puts the shown year over the three before it, one
+row per year: the totals up to the same week of the year (completed and canceled
+tasks, and started, completed and canceled projects) and, for the earlier
+years, the same strip of weeks, with the weeks after that week faded.
+A project starts on the day its first task was completed.
 
 ## History
 

@@ -19,9 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in "Projects of the week".
 - Year tab: canceled projects are shown only on hover; the "show all" switch
   names every project.
-- Year tab: year against year, running totals by week of completed and of
-  canceled tasks, and of started, completed and canceled projects, for the shown
-  year and the three before it.
+- Year tab: year against year, the totals up to the same week of the year for
+  completed and canceled tasks and for started, completed and canceled projects,
+  for the shown year and the three before it, with a strip of weeks for each of
+  the earlier years.
 
 ## [0.3.1] - 2026-10-05
 
