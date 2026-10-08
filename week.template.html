@@ -847,6 +847,8 @@ function drawYear() {
     svg.appendChild(cells[i]);
     if (!x.g) return;
     const hit = el("rect", { x: x0, y: padT, width: slotW, height: plotH, fill: "transparent" });
+    // a double click opens the week on the week tab
+    hit.addEventListener("dblclick", () => { week = x.ws; openTab("week"); });
     hit.addEventListener("mouseenter", () => {
       for (const r of [pickBase, pickTone]) r.setAttribute("x", x0 + 1 - grow);
       pickTone.setAttribute("fill-opacity", HEAT(x.g[1])); pick.setAttribute("visibility", "visible");
@@ -1147,11 +1149,13 @@ function showTab() {
   for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
   render();
 }
-for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => {
-  tab = b.dataset.tab;
+function openTab(name) {
+  tab = name;
   history.replaceState(null, "", tab === "year" ? "#year" : location.pathname + location.search);
   showTab();
-};
+  scrollTo(0, 0);
+}
+for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => openTab(b.dataset.tab);
 
 wsel.innerHTML = DATA.weeks.slice().reverse().map(w => `<option value="${w}">${wlabel(w)}</option>`).join("");
 document.getElementById("prev").onclick = () => {

@@ -31,7 +31,8 @@ current one.
 
 The **Year** tab shows the projects of a year along a strip of weeks, with
 navigation by year. A cell of the strip is one week: the darker it is, the more
-tasks were closed in it.
+tasks were closed in it. A double click on a cell opens that week on the week
+tab.
 
 Under the strip are the projects closed in each week, above it the projects
 started in the week and not closed within the year, each group on a dashed line
