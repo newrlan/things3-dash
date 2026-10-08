@@ -370,10 +370,11 @@ def freeze(con, flows, pweeks, alive, since):
 
 # ---- 4. page data ------------------------------------------------------------
 
-def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
+def week_payload(ws, flow_rows, spokes, touched, project_rows, meta, idle):
     """One week for the page: wheel spokes, the flow bar, the flow of the tasks
     with an area for the year tab, project rows.
-    touched is {area: to-dos touched}, or None for a week without this number."""
+    touched is {area: to-dos touched}, or None for a week without this number;
+    idle is {project: weeks in a row without a closed to-do, this week included}."""
     closed = defaultdict(int)
     new_open = new_closed = old_closed = 0
     area_added = area_closed = 0                    # the same flow, tasks without an area left out
@@ -400,9 +401,28 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
             continue
         oo, on, coc, coca, cnc, cnca = v[3:]
         state = "open" if not closed_on else ("wk" if closed_on <= end else "later")
-        rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on, pu])
+        rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on, pu, idle.get(pu, 0)])
     return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed],
             "c": [completed, canceled], "p": rows}
+
+
+def idle_weeks(week_projects, weeks):
+    """{week: {project: weeks in a row in which no to-do of the project was closed,
+    that week included}}. The count runs over the weeks the project has a row in
+    and starts anew after a gap."""
+    index = {w: i for i, w in enumerate(weeks)}
+    rows = defaultdict(list)
+    for w, projects in week_projects.items():
+        for pu, v in projects.items():
+            rows[pu].append((index[w], sum(v[5:9])))        # the four closed_* counts
+    idle = defaultdict(dict)
+    for pu, seq in rows.items():
+        streak, before = 0, None
+        for i, closed in sorted(seq):
+            streak = 0 if closed else (streak + 1 if before == i - 1 else 1)
+            before = i
+            idle[weeks[i]][pu] = streak
+    return idle
 
 
 def project_starts(con, tasks):
@@ -455,14 +475,18 @@ def build_payload(con, flows, pweeks, alive, tasks, someday):
     for w, pu, *v in con.execute("SELECT * FROM project_week"):
         week_projects[w][pu] = v
     frozen = [w for (w,) in con.execute("SELECT week_start FROM week ORDER BY week_start")]
+    # the running week is computed live
+    week_projects[iso(current)] = pweeks.get(current, {})
+    idle = idle_weeks(week_projects, sorted(set(frozen) | {iso(current)}))
 
     wk = {w: week_payload(date.fromisoformat(w), week_flow[w], week_spokes[w], week_touched.get(w),
-                          week_projects[w], meta)
+                          week_projects[w], meta, idle[w])
           for w in frozen}
-    # the running week is computed live; its spokes are the areas that exist now
+    # the spokes of the running week are the areas that exist now
     week_flow[iso(current)] = [((iso(day), a), v) for (day, a), v in flows.get(current, {}).items()]
     wk[iso(current)] = week_payload(current, week_flow[iso(current)], {a: meta["areas"][a] for a in alive},
-                                    touched_by_area(con, iso(current)), pweeks.get(current, {}), meta)
+                                    touched_by_area(con, iso(current)), week_projects[iso(current)], meta,
+                                    idle[iso(current)])
 
     weeks = sorted(wk)
     # closures per day from the first week to today, for the weekday chart

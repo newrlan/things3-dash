@@ -27,7 +27,8 @@ current one.
 4. **Projects of the week.** One row per active project: closed tasks to the
    right, open tasks to the left, each split into "created earlier" and
    "created this week". A project name is a link that opens the project
-   in Things.
+   in Things. A project in which no task was closed for two weeks or more is
+   marked with the number of such weeks in a row.
 
 The **Year** tab shows the projects of a year along a strip of weeks, with
 navigation by year. A cell of the strip is one week: the darker it is, the more

@@ -562,10 +562,14 @@ function drawFlow() {
   node.appendChild(leg);
 }
 
+// "2 недели", "5 недель", "21 неделю": how long, in the accusative
+const weeksWord = n => n + " " + (n % 10 === 1 && n % 100 !== 11 ? "неделю"
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "недели" : "недель");
 function draw() {
-  // [title, state, closed date, co, cn, oo, on, id]; Someday and canceled projects
-  // are already left out by build_week.py
-  const ps = DATA.wk[week].p.map(([t, st, ed, co, cn, oo, on, id]) => ({ p: { t, st, ed, id }, c: { co, cn, oo, on } }));
+  // [title, state, closed date, co, cn, oo, on, id, idle]; Someday and canceled
+  // projects are already left out by build_week.py. idle: weeks in a row without
+  // a closed task, this week included
+  const ps = DATA.wk[week].p.map(([t, st, ed, co, cn, oo, on, id, idle]) => ({ p: { t, st, ed, id, idle }, c: { co, cn, oo, on } }));
   // most open tasks first, ties by name
   ps.sort((a, b) => (b.c.oo + b.c.on) - (a.c.oo + a.c.on) || a.p.t.localeCompare(b.p.t));
 
@@ -593,7 +597,9 @@ function draw() {
   const unit = Math.max(3, Math.min(22, avail / (maxR + maxL)));
   const rowH = 26, barH = 15;
   const zeroX = labW + maxL * unit;
-  const W = Math.max(300, labW + (maxL + maxR) * unit + padR);
+  // a project that has not moved for two weeks or more is told so, right of the zero line
+  const stalled = x => x.p.st !== "wk" && x.p.idle >= 2;
+  const W = Math.max(300, labW + (maxL + maxR) * unit + padR, ps.some(stalled) ? zeroX + 120 : 0);
   const H = ps.length * rowH + 10;
 
   const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
@@ -621,6 +627,10 @@ function draw() {
     if (x.c.oo + x.c.on) {
       const t = el("text", { class: "val", x: xl - 5, y: yb + barH - 3, "text-anchor": "end" });
       t.textContent = x.c.oo + x.c.on; svg.appendChild(t);
+    }
+    if (stalled(x)) {
+      const t = el("text", { x: zeroX + 8, y: yb + barH - 3, "font-size": 11, "font-style": "italic", fill: css("--ink-3") });
+      t.textContent = "стоит " + weeksWord(x.p.idle); svg.appendChild(t);
     }
 
     const st = x.p.st;
@@ -842,6 +852,7 @@ function drawYear() {
     // a double click opens the week on the week tab
     hit.addEventListener("dblclick", () => { week = x.ws; openTab("week"); });
     hit.addEventListener("mouseenter", () => {
+      focus.off();                                  // a project still lit gives way to the week
       for (const r of [pickBase, pickTone]) r.setAttribute("x", x0 + 1 - grow);
       pickTone.setAttribute("fill-opacity", HEAT(x.g[1])); pick.setAttribute("visibility", "visible");
       // the note sits beside the cell, right of it while there is room, and
@@ -895,6 +906,25 @@ function drawYear() {
     return g;
   }
   const notes = [];
+  // which project is lit. Leaving a name does not put the lights back at once:
+  // on the way from one name to the next the chart would flash to full and fade
+  // again. The lights come back after a short pause, and a name entered within
+  // it takes over in one step.
+  const focus = {
+    p: null, timer: 0,
+    on(p) {
+      clearTimeout(this.timer);
+      if (this.p === p) return;
+      this.off();
+      this.p = p; markProject(p, true); showSpan(p);
+    },
+    off() {
+      clearTimeout(this.timer);
+      if (!this.p) return;
+      hideSpan(); markProject(this.p, false); this.p = null;
+    },
+    later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.off(), 160); }
+  };
   function showSpan(p) {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
     cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
@@ -997,8 +1027,8 @@ function drawYear() {
           const b = lb.getBBox();
           dated = caption(byStart ? OPENED(p) : CLOSED(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
         });
-        lb.addEventListener("mouseenter", () => { markProject(p, true); showSpan(p); });
-        lb.addEventListener("mouseleave", () => { hideSpan(); markProject(p, false); });
+        lb.addEventListener("mouseenter", () => focus.on(p));
+        lb.addEventListener("mouseleave", () => focus.later());
         names.appendChild(link);
       }
     }
