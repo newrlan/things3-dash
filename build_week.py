@@ -166,6 +166,7 @@ def read_things():
                    creationDate,    -- unix time
                    stopDate,        -- unix time, set when completed or canceled
                    start,           -- 0 = Inbox, 1 = Anytime, 2 = Someday
+                   startDate,       -- the day the item is scheduled to start on, packed, see things_date
                    userModificationDate,  -- unix time of the last edit, any change
                    project,         -- uuid of the parent project
                    heading,         -- uuid of the parent heading, when the item sits under one
@@ -456,7 +457,23 @@ def year_projects(con, tasks, someday):
     return closed, sorted(starts, key=lambda x: (x[1], x[0]))
 
 
-def build_payload(con, flows, pweeks, alive, tasks, someday):
+def things_date(v):
+    """Things packs a calendar date into one number: year, month and day in bit fields."""
+    return date(v >> 16, (v >> 12) & 15, (v >> 7) & 31) if v else None
+
+
+def planned_projects(projects):
+    """Open projects scheduled to start on a day still ahead: [title, start date, uuid],
+    soonest first. Copies of repeating projects stay out, as everywhere on the year tab."""
+    out = []
+    for u, (_, r) in projects.items():
+        day = things_date(r["startDate"])
+        if r["status"] == 0 and day and day > TODAY and not r["rt1_repeatingTemplate"]:
+            out.append([r["item_title"] or "(без названия)", iso(day), u])
+    return sorted(out, key=lambda x: (x[1], x[0]))
+
+
+def build_payload(con, flows, pweeks, alive, tasks, someday, planned):
     current = week_start(TODAY)
     meta = {
         "areas": dict(con.execute("SELECT area_uuid, title FROM area")),
@@ -498,7 +515,7 @@ def build_payload(con, flows, pweeks, alive, tasks, someday):
     closed_pr, started_pr = year_projects(con, tasks, someday)
     return {"weeks": weeks, "current": iso(current), "today": iso(TODAY),
             "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen),
-            "pr": closed_pr, "ps": started_pr}
+            "pr": closed_pr, "ps": started_pr, "pp": planned}
 
 
 def main():
@@ -531,7 +548,7 @@ def main():
         raise
 
     someday = {u for u, (_, r) in projects.items() if r["start"] == 2}
-    payload = build_payload(con, flows, pweeks, alive, tasks, someday)
+    payload = build_payload(con, flows, pweeks, alive, tasks, someday, planned_projects(projects))
     con.close()
 
     blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added, closed and canceled.
 - "Projects of the week": a project in which no task was closed for two weeks or
   more is marked "стоит N недель".
+- Year tab: open projects scheduled to start on a day still ahead, over the week
+  of that day.
 
 ## [0.3.1] - 2026-10-05
 

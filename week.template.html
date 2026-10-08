@@ -10,7 +10,7 @@
     --surface:#fcfcfb; --card:#ffffff; --border:#e6e5e1; --line:#3a3936;
     --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#83817b;
     --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6; --touch:#bdbbb5; --pick:#e3ecf7;
-    --cl1:#1c5cab; --cl2:#6da7ec; --op1:#b8322f; --op2:#f0918e; --grid-b:#eceae6;
+    --cl1:#1c5cab; --cl2:#6da7ec; --op1:#b8322f; --op2:#f0918e; --grid-b:#eceae6; --fill:#f9f8f6;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -18,7 +18,7 @@
       --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
       --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
       --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56; --pick:#1f2f47;
-      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
+      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28; --fill:#1e1e1d;
     }
   }
   :root[data-theme="dark"] {
@@ -26,7 +26,7 @@
     --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
     --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
     --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56; --pick:#1f2f47;
-      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
+      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28; --fill:#1e1e1d;
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--surface); color:var(--ink);
@@ -94,6 +94,8 @@
   .legend span { display:flex; align-items:center; gap:6px; }
   .legend i { width:10px; height:10px; border-radius:2px; }
   .legend b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .legend .group { display:flex; flex-wrap:wrap; gap:4px 18px; padding:3px 10px; border-radius:4px;
+                   background:var(--fill); }
   .empty { color:var(--ink-3); font-size:13px; padding:20px 2px; }
 </style>
 </head>
@@ -803,7 +805,15 @@ function drawYear() {
   const started = ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday, id]) => ({ title, from, to, st, someday, id })).filter(lasted);
   const endsHere = p => p.to && slots.some(q => q.ws === mondayOf(p.to));
   const unstarted = ws => (UNSTARTED_IN[ws] || []).map(([title, from, to, st, id]) => ({ title, from, to, st, id })).filter(lasted);
-  const above = layOut(ws => started(ws).concat(unstarted(ws)).sort(byTitle), p => p.st === 2 || endsHere(p));
+  // projects scheduled to start on a day still ahead stand over the week of that day
+  // (at: that day). One that has already begun, with a completed task behind it,
+  // keeps the dates of its life, so this name and the name over its start are one project
+  const planned = ws => DATA.pp.filter(q => mondayOf(q[1]) === ws).map(([title, at, id]) => {
+    const life = DATA.ps.find(q => q[5] === id);
+    return life ? { title, from: life[1], to: life[2], st: life[3], someday: life[4], id, planned: true, at, begun: true }
+                : { title, from: at, id, planned: true, at };
+  });
+  const above = layOut(ws => started(ws).concat(unstarted(ws)).sort(byTitle).concat(planned(ws)), p => !p.planned && (p.st === 2 || endsHere(p)));
   // completed projects first, canceled ones after them
   const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from, id]) => ({ title, from, to, st, id }))
     .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)), p => p.st === 2);
@@ -893,6 +903,8 @@ function drawYear() {
   // a note of the hovered project: small text on a patch of card colour, so the
   // faded names behind it do not show through
   const OPENED = p => "открыто: " + human(addDays(p.from, 0));
+  // over a planned name: the day ahead, a start for a project not begun yet, a return for one that has
+  const PLANNED = p => (p.begun ? "возобновление: " : "старт: ") + human(addDays(p.at, 0));
   const CLOSED = p => (p.st === 3 ? "закрыто: " : "отменено: ") + human(addDays(p.to, 0));
   // dates are in italics, the length of the project in bold
   function caption(text, x, y, anchor, bold) {
@@ -900,7 +912,10 @@ function drawYear() {
       "font-style": bold ? "normal" : "italic", "text-anchor": anchor, fill: css(bold ? "--ink" : "--ink-2") });
     t.textContent = text;
     g.appendChild(t); spot.appendChild(g);
-    const b = t.getBBox();
+    let b = t.getBBox();
+    // a note that would run off the chart is pulled back inside
+    const dx = b.x + b.width > W - 4 ? W - 4 - b.x - b.width : b.x < 4 ? 4 - b.x : 0;
+    if (dx) { t.setAttribute("x", x + dx); b = t.getBBox(); }
     g.insertBefore(el("rect", { x: b.x - 3, y: b.y - 1, width: b.width + 6, height: b.height + 2, rx: 3, fill: css("--card") }), t);
     g.box = b;
     return g;
@@ -929,6 +944,7 @@ function drawYear() {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
     cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
     for (const e of others) e.setAttribute("opacity", FADE);
+    if (p.planned && !p.begun) return;            // it has no life yet: nothing to measure
 
     // just over the strip: an arrow at the edge the project runs past, with the
     // date that lies beyond it, and the length of the project over its middle
@@ -973,12 +989,16 @@ function drawYear() {
       });
       for (const l of wk.labels) {
         const p = l.p;
-        const tone = css(!p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
+        const tone = css(p.planned ? "--ink-3" : !p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
         // a dot of the project's colour on the line of the week, level with the name
-        const dot = el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 3, fill: tone, stroke: css("--card"), "stroke-width": 1.5 });
+        // a planned project is a hollow dot and a name in italics: it is not there yet
+        const dot = p.planned
+          ? el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 2.6, fill: css("--card"), stroke: tone, "stroke-width": 1.4 })
+          : el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 3, fill: tone, stroke: css("--card"), "stroke-width": 1.5 });
         names.appendChild(dot);
         const lb = el("text", Object.assign({ x: l.x + (l.anchor === "end" ? -2 : 2), y: yOf(l.r), "font-size": 11, "font-weight": 500,
           "text-anchor": l.anchor, fill: tone }, halo));
+        if (p.planned) lb.setAttribute("font-style", "italic");
         lb.textContent = l.text;
         // the name is a link that opens the project in Things
         const link = el("a", { href: "things:///show?id=" + encodeURIComponent(p.id) });
@@ -1005,7 +1025,8 @@ function drawYear() {
             fill: css("--pick") }));
           // on the plate the dot and the halo of the text take its colour, not the card's
           const d2 = dot.cloneNode(), t2 = lb.cloneNode(true);
-          d2.setAttribute("stroke", css("--pick")); t2.setAttribute("stroke", css("--pick"));
+          if (p.planned) d2.setAttribute("fill", css("--pick")); else d2.setAttribute("stroke", css("--pick"));
+          t2.setAttribute("stroke", css("--pick"));
           t2.removeAttribute("visibility"); d2.removeAttribute("visibility");
           t2.removeAttribute("opacity"); d2.removeAttribute("opacity");
           plate.appendChild(d2); plate.appendChild(t2);
@@ -1025,7 +1046,7 @@ function drawYear() {
             stroke: css("--ink-3"), "stroke-width": 2, "stroke-dasharray": "2 3" });
           drops.appendChild(lead);
           const b = lb.getBBox();
-          dated = caption(byStart ? OPENED(p) : CLOSED(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
+          dated = caption(!byStart ? CLOSED(p) : p.planned ? PLANNED(p) : OPENED(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
         });
         lb.addEventListener("mouseenter", () => focus.on(p));
         lb.addEventListener("mouseleave", () => focus.later());
@@ -1053,12 +1074,18 @@ function drawYear() {
   leg.className = "legend";
   const tasksDone = slots.reduce((n, x) => n + (x.g ? DATA.wk[x.ws].c[0] : 0), 0);      // .c is [completed, canceled]
   const tasksDropped = slots.reduce((n, x) => n + (x.g ? DATA.wk[x.ws].c[1] : 0), 0);
-  for (const [name, v] of [["Задач добавлено", added], ["закрыто", tasksDone], ["отменено", tasksDropped],
-                           ["Проектов добавлено", opened], ["закрыто", done], ["отменено", dropped]]) {
-    const it = document.createElement("span"), b = document.createElement("b");
-    it.appendChild(document.createTextNode(name + ": "));
-    b.textContent = v; it.appendChild(b);
-    leg.appendChild(it);
+  // each of the two groups sits on its own pale fill
+  for (const group of [[["Задач добавлено", added], ["закрыто", tasksDone], ["отменено", tasksDropped]],
+                       [["Проектов добавлено", opened], ["закрыто", done], ["отменено", dropped]]]) {
+    const box = document.createElement("div");
+    box.className = "group";
+    for (const [name, v] of group) {
+      const it = document.createElement("span"), b = document.createElement("b");
+      it.appendChild(document.createTextNode(name + ": "));
+      b.textContent = v; it.appendChild(b);
+      box.appendChild(it);
+    }
+    leg.appendChild(box);
   }
   node.appendChild(leg);
 }
