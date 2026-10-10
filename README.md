@@ -32,17 +32,18 @@ current one.
 
 The **Year** tab shows the projects of a year along a strip of weeks, with
 navigation by year. A cell of the strip is one week: the darker it is, the more
-tasks were closed in it. A double click on a cell opens that week on the week
-tab.
+tasks were closed in it. Hovering a cell gives the dates of the week and the
+tasks closed and added in it; while a project is pinned, the tasks of that
+project. A double click on a cell opens that week on the week tab.
 
 A project is named where the work on it was. Above the strip are the projects
 whose first task was completed in the week, under it the closed projects whose
 last task was completed in it, each group on a dashed line from the week. A
 project without a completed task is named at its creation and at its closing,
 in grey. Above the strip only the projects that do not end within the year are
-drawn. Hovering a week brings up the rest: the projects that end later in the
-year, and the canceled ones. A canceled project is not drawn otherwise, and a
-project that lasted less than two days is not shown. The "show all" switch of
+drawn: one that ends in it is named under the strip, and its name above comes up
+with the project. A canceled project and a project that lasted less than two
+days are not shown. The "show all" switch of
 the card names every project, both where it starts and where it ends. Copies of
 repeating projects are never shown. An open project scheduled in Things to
 start on a day still ahead stands over the week of that day only, as a hollow

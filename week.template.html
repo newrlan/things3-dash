@@ -727,9 +727,9 @@ const HEAT_TOP = (() => {
   return Math.max(1, v[Math.floor(v.length * 0.95)] || 1);
 })();
 const HEAT = n => 0.06 + 0.94 * Math.min(1, n / HEAT_TOP);
-// "show all" off: a canceled project comes up only when its week is hovered, a
-// project that lasted less than two days is not shown, and a project closed
-// within the year is named only where it was closed. On: every project is named,
+// "show all" off: a canceled project and a project that lasted less than two
+// days are not shown, and a project that ends within the year is named only
+// where it ends. On: every project is named,
 // where it started and where it was closed.
 let showAll = false;
 function drawYear() {
@@ -762,7 +762,7 @@ function drawYear() {
   const ctx = document.createElement("canvas").getContext("2d");
   ctx.font = "500 11px " + getComputedStyle(document.body).fontFamily;
   // every name takes a row where it does not run into the names of other weeks.
-  // hide(p): the project is not drawn until its week is hovered. Such names take
+  // hide(p): the name is not drawn until its project is lit. Such names take
   // no room among the others: they queue on the line of their week right after
   // its drawn names, and come up on plates over whatever is there.
   function layOut(pick, hide) {
@@ -789,7 +789,7 @@ function drawYear() {
       let next = Math.max(-1, ...labels.map(l => l.r)) + 1;
       for (const l of later) { l.r = next++; labels.push(l); }
       depth = Math.max(depth, next);
-      weeks.push({ x, cx, labels, deepest: next - 1 });
+      weeks.push({ x, cx, labels });
     });
     return { weeks, rows: Math.max(rows.length, depth) };
   }
@@ -798,7 +798,7 @@ function drawYear() {
   const lasted = p => showAll || !p.to || (addDays(p.to, 0) - addDays(p.from, 0)) / 864e5 >= 2;
   // above the strip only the projects that do not end within this year are
   // drawn: the ones that do are named under the strip, where they end, and
-  // above it they come up when their week is hovered
+  // above it they come up with their project
   const inYear = iso => slots.some(q => q.ws === mondayOf(iso));
   const started = ws => (UP_IN[ws] || []).filter(lasted);
   const endsHere = p => p.down && inYear(p.down);
@@ -824,11 +824,8 @@ function drawYear() {
 
   const cells = [];                               // the cell of every week, to fade the ones outside a project
   let month = -1;
-  // {week start: [switch]}: turns the names of the week's projects and their
-  // lines bold or back; filled in when the names are drawn
-  const weekMarks = {};
-  const markWeek = (ws, on) => (weekMarks[ws] || []).forEach(f => f(on));
-  // the same for one project: its name where it starts and its name where it is closed
+  // {project: [switch]}: turns its names bold or back, the one where it starts
+  // and the one where it ends; filled in when the names are drawn
   const projMarks = {};
   const projKey = p => p.title + "|" + p.from + "|" + (p.to || "");
   const markProject = (p, on) => (projMarks[projKey(p)] || []).forEach(f => f(on));
@@ -864,19 +861,20 @@ function drawYear() {
       // the note sits beside the cell, right of it while there is room, and
       // stays inside the strip so that it never covers a project name
       const a = addDays(x.ws, 0), b = addDays(x.ws, 6);
+      // [added, closed] of the week: over all tasks, or in the pinned project
+      const own = focus.pinned && ((DATA.wk[x.ws].y || {})[focus.p.id] || [0, 0]);
+      const g = own || x.g;
       const parts = [a.getDate() + " " + MON[a.getMonth()] + " – " + b.getDate() + " " + MON[b.getMonth()],
-                     "сделано " + x.g[1], "новых " + x.g[0]];
+                     (own ? "в проекте: " : "") + "сделано " + g[1], "новых " + g[0]];
       noteText.textContent = parts.join(" · ");
       const w = ctx.measureText(noteText.textContent).width * 12 / 11 + 20;
       const right = x0 + slotW + grow + 6, nx = right + w > W - padR ? x0 - grow - 6 - w : right;
       noteBox.setAttribute("x", nx); noteBox.setAttribute("width", w);
       noteText.setAttribute("x", nx + 10);
       note.setAttribute("visibility", "visible");
-      markWeek(x.ws, true);
     });
     hit.addEventListener("mouseleave", () => {
-      pick.setAttribute("visibility", "hidden"); note.setAttribute("visibility", "hidden"); markWeek(x.ws, false);
-      focus.relight();
+      pick.setAttribute("visibility", "hidden"); note.setAttribute("visibility", "hidden");
     });
     svg.appendChild(hit);
   });
@@ -886,7 +884,6 @@ function drawYear() {
   const noteBox = el("rect", { y: padT + 1 - lift, height: plotH - 2, rx: 6, fill: css("--card"), stroke: css("--border"), "stroke-width": 1 });
   const noteText = el("text", { y: padT + plotH / 2 + 4 - lift, "font-size": 12, "font-weight": 500, fill: css("--ink") });
   note.appendChild(noteBox); note.appendChild(noteText);
-  svg.appendChild(note);
 
   // hovering a name fades everything that is not the project: the weeks outside
   // its life, from the week of its start to the week it was closed in (today for
@@ -953,10 +950,7 @@ function drawYear() {
       if (same) return this.off();
       this.on(p); this.pinned = true;
     },
-    unpin() { this.pinned = false; this.off(); },
-    // a week that was hovered takes the plates of its names away with it,
-    // the ones of a pinned project among them: they are put back
-    relight() { if (this.pinned) markProject(this.p, true); }
+    unpin() { this.pinned = false; this.off(); }
   };
   svg.addEventListener("click", () => focus.unpin());
   function showSpan(p) {
@@ -1023,26 +1017,14 @@ function drawYear() {
   // byStart: the names stand for the start of the project, so the card leads with it
   function drawNames(layout, yOf, lineFrom, lineTo, byStart) {
     for (const wk of layout.weeks) {
-      // the line runs to the last name that is drawn. Hovering the week ("week")
-      // takes it on to the unseen projects, which come up on plates; hovering one
-      // project ("project") leaves it as it is.
+      // the line runs to the last name that is drawn; a week of unseen names has none
       const seen = wk.labels.filter(l => !l.bare).map(l => l.r);
-      const rest = seen.length ? lineTo(Math.max(...seen)) : lineFrom(wk.x);
-      const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx,
-        stroke: css("--ink-3"), "stroke-dasharray": "2 3" });
-      const lit = mode => {
-        drop.setAttribute("stroke-width", mode === "week" ? 2 : 1);
-        drop.setAttribute("y2", mode === "week" ? lineTo(wk.deepest) : rest);
-        drop.setAttribute("visibility", mode === "week" || seen.length ? "visible" : "hidden");
-      };
-      lit(false);
-      drops.appendChild(drop);
-      others.push(drop);
-      const marks = [];                           // one switch per name of the week
-      (weekMarks[wk.x.ws] = weekMarks[wk.x.ws] || []).push(on => {
-        lit(on && "week");
-        for (const mark of marks) mark(on);
-      });
+      if (seen.length) {
+        const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(Math.max(...seen)),
+          stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" });
+        drops.appendChild(drop);
+        others.push(drop);
+      }
       for (const l of wk.labels) {
         const p = l.p;
         // a project without a completed task is grey, as a planned one
@@ -1063,12 +1045,11 @@ function drawYear() {
         lb.addEventListener("dblclick", () => { location.href = "things:///show?id=" + encodeURIComponent(p.id); });
         // a hidden project is not drawn at all, neither its dot nor its name, and
         // its place does not react to the pointer. Both come up on the plate when
-        // its week is hovered.
+        // the project is lit.
         if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); }
         others.push(dot, lb);
         // the name under the pointer turns bold with the line of its week, and
-        // so does the other name of the same project, if it is in this year;
-        // hovering a week does the same to every name of that week
+        // so does the other name of the same project, if it is in this year
         // ... and both are lifted onto a plate, over the names around them. The plate is
         // a pale tint of the blue of the strip.
         let plate = null;
@@ -1090,12 +1071,11 @@ function drawYear() {
           plate.appendChild(d2); plate.appendChild(t2);
           spot.appendChild(plate);
         };
-        marks.push(mark);
         // with the plate comes a date over the name: of the start where the
         // project starts, of the closing where it was closed
         let dated = null, lead = null;
         (projMarks[projKey(p)] = projMarks[projKey(p)] || []).push(on => {
-          mark(on); lit(on && "project");
+          mark(on);
           if (dated) { dated.remove(); dated = null; }
           if (lead) { lead.remove(); lead = null; }
           if (!on) return;
@@ -1123,6 +1103,7 @@ function drawYear() {
   const opened = Object.values(PROJ).filter(p => inYear(p.from) && lasted(p)).length;
   svg.appendChild(names);
   svg.appendChild(spot);
+  svg.appendChild(note);                          // over the ticks and the dates of a pinned project
   const H2 = below.rows ? top + below.rows * rowH + 4 : H;
   svg.setAttribute("height", H2); svg.setAttribute("viewBox", `0 0 ${W} ${H2}`);
   node.innerHTML = ""; node.appendChild(svg);

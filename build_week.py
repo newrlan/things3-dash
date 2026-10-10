@@ -373,7 +373,8 @@ def freeze(con, flows, pweeks, alive, since):
 
 def week_payload(ws, flow_rows, spokes, touched, project_rows, meta, idle):
     """One week for the page: wheel spokes, the flow bar, the flow of the tasks
-    with an area for the year tab, project rows.
+    with an area for the year tab, project rows, and for the year tab the flow
+    of every project as {project: [added, closed]}, the ones without it left out.
     touched is {area: to-dos touched}, or None for a week without this number;
     idle is {project: weeks in a row without a closed to-do, this week included}."""
     closed = defaultdict(int)
@@ -403,8 +404,9 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta, idle):
         oo, on, coc, coca, cnc, cnca = v[3:]
         state = "open" if not closed_on else ("wk" if closed_on <= end else "later")
         rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on, pu, idle.get(pu, 0)])
+    own = {pu: [v[4] + v[7] + v[8], sum(v[5:])] for pu, v in project_rows.items() if v[4] or any(v[5:])}
     return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed],
-            "c": [completed, canceled], "p": rows}
+            "c": [completed, canceled], "p": rows, "y": own}
 
 
 def idle_weeks(week_projects, weeks):
