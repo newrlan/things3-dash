@@ -684,8 +684,9 @@ function weeksOf(y) {
 // the projects of the year along a strip of weeks. A cell of the strip is one
 // week, the darker the more tasks were closed in it, all tasks counted; the
 // scale is the same for every year. Above the strip are the
-// projects started in each week, under it the projects closed in it, each
-// group on a dashed line from the week.
+// projects whose first task was completed in each week, under it the closed
+// projects whose last task was completed in it, each group on a dashed line
+// from the week.
 // a project's life in words: calendar years, months and days
 function lifeSpan(from, to) {
   const a = addDays(from, 0), b = addDays(to, 0);
@@ -703,15 +704,18 @@ function lifeSpan(from, to) {
           days || !months ? word(days, "день", "дня", "дней") : ""].filter(Boolean).join(" ");
 }
 const mondayOf = iso => isoOf(addDays(iso, -((addDays(iso, 0).getDay() + 6) % 7)));
-const CLOSED_IN = {};                             // {week start: [[title, closing date, status, start date, id]]}
-for (const p of DATA.pr) {
-  const ws = mondayOf(p[1]);
-  (CLOSED_IN[ws] = CLOSED_IN[ws] || []).push(p);
+// every project of the year tab by id. from, to: the days it was created and
+// closed; first, last: the days of its first and of its last completed task.
+// Its names stand where the work was: over the week of the first task (up) and,
+// for a closed project, under the week of the last one (down). A project
+// without a completed task is named at its creation and at its closing.
+const PROJ = {};
+const UP_IN = {}, DOWN_IN = {};                   // {week start: [project]}
+for (const [title, from, to, st, someday, id, first, last] of DATA.ps) {
+  const p = PROJ[id] = { title, from, to, st, someday, id, first, last, up: first || from, down: to && st ? last || to : null };
+  (UP_IN[mondayOf(p.up)] = UP_IN[mondayOf(p.up)] || []).push(p);
+  if (p.down) (DOWN_IN[mondayOf(p.down)] = DOWN_IN[mondayOf(p.down)] || []).push(p);
 }
-const STARTED_IN = {};                            // {week start: [[title, start date, closing date, status, in Someday, id, first completed task, last one]]}
-for (const p of DATA.ps) (STARTED_IN[mondayOf(p[1])] = STARTED_IN[mondayOf(p[1])] || []).push(p);
-// {project id: [day of the first completed task, day of the last one]}, nulls without such a task
-const DONE = Object.fromEntries(DATA.ps.map(p => [p[5], [p[6], p[7]]]));
 // {project id: the day ahead the project is scheduled to start on}
 const AHEAD = Object.fromEntries(DATA.pp.map(([, at, id]) => [id, at]));
 // [added, closed] in a week over all tasks, from its flow [new open, new closed, old closed]
@@ -792,23 +796,22 @@ function drawYear() {
   const byTitle = (a, b) => a.title.localeCompare(b.title);
   // a project closed less than two days after its start is not shown
   const lasted = p => showAll || !p.to || (addDays(p.to, 0) - addDays(p.from, 0)) / 864e5 >= 2;
-  // above the strip only the projects that were not closed within this year are
-  // drawn: the ones closed in it are named under the strip, where they end, and
+  // above the strip only the projects that do not end within this year are
+  // drawn: the ones that do are named under the strip, where they end, and
   // above it they come up when their week is hovered
-  const started = ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday, id]) => ({ title, from, to, st, someday, id })).filter(lasted);
-  const endsHere = p => p.to && slots.some(q => q.ws === mondayOf(p.to));
+  const inYear = iso => slots.some(q => q.ws === mondayOf(iso));
+  const started = ws => (UP_IN[ws] || []).filter(lasted);
+  const endsHere = p => p.down && inYear(p.down);
   // projects scheduled to start on a day still ahead stand over the week of that day
   // (at: that day), and only there: the name over the start of such a project
   // comes up with the project. Both keep the dates of its life, so they are one project
-  const planned = ws => DATA.pp.filter(q => mondayOf(q[1]) === ws).map(([title, at, id]) => {
-    const life = DATA.ps.find(q => q[5] === id);
-    return life ? { title, from: life[1], to: life[2], st: life[3], someday: life[4], id, planned: true, at }
-                : { title, from: at, id, planned: true, at, lifeless: true };
-  });
+  const planned = ws => DATA.pp.filter(q => mondayOf(q[1]) === ws).map(([title, at, id]) =>
+    PROJ[id] ? Object.assign({}, PROJ[id], { planned: true, at })
+             : { title, from: at, id, planned: true, at, lifeless: true });
   const above = layOut(ws => started(ws).sort(byTitle).concat(planned(ws)),
     p => !p.planned && (p.st === 2 || endsHere(p) || p.id in AHEAD));
   // completed projects first, canceled ones after them
-  const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from, id]) => ({ title, from, to, st, id }))
+  const below = layOut(ws => (DOWN_IN[ws] || [])
     .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)), p => p.st === 2);
 
   const gapT = 20;                                // air above the strip, to match the names under it
@@ -855,7 +858,7 @@ function drawYear() {
     // a double click opens the week on the week tab
     hit.addEventListener("dblclick", () => { week = x.ws; openTab("week"); });
     hit.addEventListener("mouseenter", () => {
-      focus.off();                                  // a project still lit gives way to the week
+      focus.off();                                  // a project still lit gives way to the week, unless it is pinned
       for (const r of [pickBase, pickTone]) r.setAttribute("x", x0 + 1 - grow);
       pickTone.setAttribute("fill-opacity", HEAT(x.g[1])); pick.setAttribute("visibility", "visible");
       // the note sits beside the cell, right of it while there is room, and
@@ -873,6 +876,7 @@ function drawYear() {
     });
     hit.addEventListener("mouseleave", () => {
       pick.setAttribute("visibility", "hidden"); note.setAttribute("visibility", "hidden"); markWeek(x.ws, false);
+      focus.relight();
     });
     svg.appendChild(hit);
   });
@@ -895,10 +899,17 @@ function drawYear() {
   };
   // a note of the hovered project: small text on a patch of card colour, so the
   // faded names behind it do not show through
-  const OPENED = p => "открыто: " + human(addDays(p.from, 0));
+  const OPENED = p => "создано: " +human(addDays(p.from, 0));
   // over a planned name: the day ahead, a return to a project with a completed task, else a start
-  const PLANNED = p => ((DONE[p.id] || [])[0] ? "возобновление: " : "старт: ") + human(addDays(p.at, 0));
+  const PLANNED = p => (p.first ? "возобновление: " : "старт: ") + human(addDays(p.at, 0));
   const CLOSED = p => (p.st === 3 ? "закрыто: " : "отменено: ") + human(addDays(p.to, 0));
+  // over a name: the day of the task it stands at. When the project was created
+  // or closed in the same week, or has no completed task, that day is given instead.
+  const sameWeek = (a, b) => a && b && mondayOf(a) === mondayOf(b);
+  const FIRST = p => "первая задача: " + human(addDays(p.first, 0));
+  const LAST = p => "последняя задача: " + human(addDays(p.last, 0));
+  const START = p => !p.first || sameWeek(p.first, p.from) ? OPENED(p) : FIRST(p);
+  const END = p => !p.last || sameWeek(p.last, p.to) ? CLOSED(p) : LAST(p);
   // dates are in italics, the length of the project in bold
   function caption(text, x, y, anchor, bold) {
     const g = el("g"), t = el("text", { x, y, "font-size": 10.5, "font-weight": bold ? 700 : 500,
@@ -918,21 +929,36 @@ function drawYear() {
   // on the way from one name to the next the chart would flash to full and fade
   // again. The lights come back after a short pause, and a name entered within
   // it takes over in one step.
+  // A click on a name pins its project: it stays lit whatever the pointer is
+  // over, until its name is clicked again, another name or the chart beside them.
   const focus = {
-    p: null, timer: 0,
+    p: null, pinned: false, timer: 0,
     on(p) {
+      if (this.pinned) return;
       clearTimeout(this.timer);
       if (this.p === p) return;
       this.off();
       this.p = p; markProject(p, true); showSpan(p);
     },
     off() {
+      if (this.pinned) return;
       clearTimeout(this.timer);
       if (!this.p) return;
       hideSpan(); markProject(this.p, false); this.p = null;
     },
-    later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.off(), 160); }
+    later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.off(), 160); },
+    pin(p) {
+      const same = this.pinned && projKey(this.p) === projKey(p);
+      this.pinned = false;
+      if (same) return this.off();
+      this.on(p); this.pinned = true;
+    },
+    unpin() { this.pinned = false; this.off(); },
+    // a week that was hovered takes the plates of its names away with it,
+    // the ones of a pinned project among them: they are put back
+    relight() { if (this.pinned) markProject(this.p, true); }
   };
+  svg.addEventListener("click", () => focus.unpin());
   function showSpan(p) {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
     cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
@@ -942,8 +968,10 @@ function drawYear() {
     // just over the strip: an arrow at the edge the project runs past, with the
     // date that lies beyond it, and the length of the project over its middle
     const y = padT - 7, xl = padL, xr = W - padR;
-    const left = a < 0 ? caption("← " + OPENED(p), xl + 3, y, "start") : null;
-    const right = b >= slots.length ? caption((p.to ? CLOSED(p) : "в работе") + " →", xr - 3, y, "end") : null;
+    // an end inside the year that is not where the name stands is a tick with its date
+    const ticks = showTicks(p, y);
+    const left = a < 0 ? caption("← " + OPENED(p), xl + 3, y, "start") : ticks.created;
+    const right = b >= slots.length ? caption((p.to ? CLOSED(p) : "в работе") + " →", xr - 3, y, "end") : ticks.closed;
     const from = padL + Math.max(a, 0) * slotW, to = padL + (Math.min(b, slots.length - 1) + 1) * slotW;
     const mid = caption(lifeSpan(p.from, p.to || DATA.today), (from + to) / 2, y, "middle", true);
     // the middle note gives way to an arrow it would run into, and stays inside the plot
@@ -951,23 +979,21 @@ function drawYear() {
     const x0 = Math.min(Math.max(mid.box.x, lo), Math.max(lo, hi - w));
     mid.setAttribute("transform", `translate(${x0 - mid.box.x},0)`);
     notes.push(mid, left, right);
-    showTicks(p);
   }
-  // ticks across the strip inside the life of the lit project: the weeks of its
-  // first and of its last completed task, each with its date under the strip,
-  // and, in grey, the week of the day ahead it is scheduled for. A tick in the
-  // week of the start or of the closing is left out, the name there stands for
-  // it; the first and the last task of one week share a tick.
-  function showTicks(p) {
-    const [first, last] = DONE[p.id] || [], at = AHEAD[p.id];
-    const ends = [mondayOf(p.from), p.to && mondayOf(p.to)];
-    const inYear = day => slots.some(q => q.ws === mondayOf(day));
-    const inner = day => day && !ends.includes(mondayOf(day)) && inYear(day);
-    const y1 = padT - 3, y2 = padT + plotH + 3;
-    const tick = (day, tone) => {
+  // ticks across the strip at the ends of the life of the lit project: the week
+  // it was created in and the week it was closed in, where the name stands in
+  // another week, at a task. Their dates are over the strip, outside the life,
+  // on both sides of its length; the dates of the tasks are with the names. An
+  // open project has no name for its end: its tick is the week of its last
+  // completed task, dated under the strip, so the time it has stood since then
+  // is seen.
+  function showTicks(p, y) {
+    // a tick runs past the strip to the side its date is on
+    const y2 = padT + plotH + 3;
+    const tick = (day, y1 = padT - 17) => {
       const cx = Math.round(padL + weekOf(day) * slotW + slotW / 2) + .5, g = el("g");
       g.appendChild(el("line", { x1: cx, y1, x2: cx, y2, stroke: css("--card"), "stroke-width": 2 }));
-      g.appendChild(el("line", { x1: cx, y1, x2: cx, y2, stroke: css(tone), "stroke-width": 0.75 }));
+      g.appendChild(el("line", { x1: cx, y1, x2: cx, y2, stroke: css("--ink"), "stroke-width": 0.75 }));
       spot.appendChild(g); notes.push(g);
       return cx;
     };
@@ -984,12 +1010,10 @@ function drawYear() {
       }
       taken.push(c.box); notes.push(c);
     };
-    const day = iso => human(addDays(iso, 0));
-    const one = first && mondayOf(first) === mondayOf(last);
-    if (inner(first))
-      date(!one ? "первая задача: " + day(first) : first === last ? "задачи: " + day(first) : "задачи: " + day(first) + " – " + day(last), tick(first, "--ink"), -1);
-    if (!one && inner(last)) date("последняя задача: " + day(last), tick(last, "--ink"), 1);
-    if (at && inYear(at)) tick(at, "--ink-3");
+    const created = p.first && !sameWeek(p.first, p.from) && inYear(p.from) ? caption(OPENED(p), tick(p.from) - 5, y, "end") : null;
+    const closed = p.to && p.last && !sameWeek(p.last, p.to) && inYear(p.to) ? caption(CLOSED(p), tick(p.to) + 5, y, "start") : null;
+    if (!p.to && p.last && !sameWeek(p.last, p.up) && inYear(p.last)) date(LAST(p), tick(p.last, padT - 3), 1);
+    return { created, closed };
   }
   function hideSpan() {
     for (const e of cells.concat(others)) e.removeAttribute("opacity");
@@ -1021,7 +1045,8 @@ function drawYear() {
       });
       for (const l of wk.labels) {
         const p = l.p;
-        const tone = css(p.planned ? "--ink-3" : !p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
+        // a project without a completed task is grey, as a planned one
+        const tone = css(p.planned || !p.first ? "--ink-3" : !p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
         // a dot of the project's colour on the line of the week, level with the name
         // a planned project is a hollow dot and a name in italics: it is not there yet
         const dot = p.planned
@@ -1032,9 +1057,10 @@ function drawYear() {
           "text-anchor": l.anchor, fill: tone }, halo));
         if (p.planned) lb.setAttribute("font-style", "italic");
         lb.textContent = l.text;
-        // the name is a link that opens the project in Things
-        const link = el("a", { href: "things:///show?id=" + encodeURIComponent(p.id) });
-        link.appendChild(lb);
+        // a click pins the project, a double click opens it in Things
+        lb.style.cursor = "pointer"; lb.style.userSelect = "none";
+        lb.addEventListener("click", e => { e.stopPropagation(); if (e.detail < 2) focus.pin(p); });
+        lb.addEventListener("dblclick", () => { location.href = "things:///show?id=" + encodeURIComponent(p.id); });
         // a hidden project is not drawn at all, neither its dot nor its name, and
         // its place does not react to the pointer. Both come up on the plate when
         // its week is hovered.
@@ -1078,11 +1104,11 @@ function drawYear() {
             stroke: css("--ink-3"), "stroke-width": 2, "stroke-dasharray": "2 3" });
           drops.appendChild(lead);
           const b = lb.getBBox();
-          dated = caption(!byStart ? CLOSED(p) : p.planned ? PLANNED(p) : OPENED(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
+          dated = caption(!byStart ? END(p) : p.planned ? PLANNED(p) : START(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
         });
         lb.addEventListener("mouseenter", () => focus.on(p));
         lb.addEventListener("mouseleave", () => focus.later());
-        names.appendChild(link);
+        names.appendChild(lb);
       }
     }
   }
@@ -1090,10 +1116,11 @@ function drawYear() {
   // a line ends in the middle of the dot of its last name, so nothing sticks out past the dot
   drawNames(above, r => padT - 10 - gapT - r * rowH, () => padT - 2, r => padT - 14 - gapT - r * rowH, true);
   drawNames(below, r => top + r * rowH + 11, () => padT + plotH + 2, r => top + r * rowH + 7);
-  const all = below.weeks.flatMap(wk => wk.labels.map(l => l.p));
-  const done = all.filter(p => p.st === 3).length, dropped = all.length - done;
-  // every project started in the year, named above the strip or not
-  const opened = slots.reduce((n, x) => n + started(x.ws).length, 0);
+  // the totals count a project in the year it was created in and in the year it
+  // was closed in, wherever its names stand
+  const ended = Object.values(PROJ).filter(p => p.down && inYear(p.to) && lasted(p));
+  const done = ended.filter(p => p.st === 3).length, dropped = ended.length - done;
+  const opened = Object.values(PROJ).filter(p => inYear(p.from) && lasted(p)).length;
   svg.appendChild(names);
   svg.appendChild(spot);
   const H2 = below.rows ? top + below.rows * rowH + 4 : H;

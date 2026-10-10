@@ -445,21 +445,17 @@ def done_spans(con, tasks):
 
 
 def year_projects(con, tasks, someday):
-    """Projects for the year tab, copies of repeating projects left out:
-    closed ones as [title, closing date, status, start date, uuid] and all of them
-    as [title, start date, closing date, status, in Someday, uuid, day of the first
+    """Projects for the year tab, copies of repeating projects left out, as
+    [title, creation date, closing date, status, in Someday, uuid, day of the first
     completed to-do, day of the last one], the two days None without such a to-do.
-    A project starts on the day it was created.
     The uuid is what a things:///show?id= link takes."""
     done = done_spans(con, tasks)
-    closed, starts = [], []
+    starts = []
     for u, t, c, s, st in con.execute("""SELECT project_uuid, title, created, closed, status FROM project
                                          WHERE NOT repeating ORDER BY closed, title"""):
         c = min(c, s or c)
         starts.append([t, c, s, st, int(u in someday), u, *done.get(u, [None, None])])
-        if s and st in (2, 3):
-            closed.append([t, s, st, c, u])
-    return closed, sorted(starts, key=lambda x: (x[1], x[0]))
+    return sorted(starts, key=lambda x: (x[1], x[0]))
 
 
 def things_date(v):
@@ -517,10 +513,9 @@ def build_payload(con, flows, pweeks, alive, tasks, someday, planned):
     for w in weeks:
         for (day, _), v in week_flow[w]:
             closed[(date.fromisoformat(day) - first).days] += v[1] + v[2] + v[3] + v[4]
-    closed_pr, started_pr = year_projects(con, tasks, someday)
     return {"weeks": weeks, "current": iso(current), "today": iso(TODAY),
             "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen),
-            "pr": closed_pr, "ps": started_pr, "pp": planned}
+            "ps": year_projects(con, tasks, someday), "pp": planned}
 
 
 def main():

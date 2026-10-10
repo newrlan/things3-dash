@@ -35,29 +35,34 @@ navigation by year. A cell of the strip is one week: the darker it is, the more
 tasks were closed in it. A double click on a cell opens that week on the week
 tab.
 
-Under the strip are the projects closed in each week, above it the projects
-started in the week and not closed within the year, each group on a dashed line
-from the week. Hovering a week brings up the rest: the projects started in it that were
-closed later in the year, and the canceled ones. A canceled project is not
-drawn otherwise, and a project that lasted less than two days is not shown. The
-"show all" switch of the card names every project, both where it started and
-where it was closed. Copies of repeating projects are never shown. A
-project starts on the day it was created. An open project scheduled in Things to start on a
-day still ahead stands over the week of that day only, as a hollow dot and a name in
-italics; the day is called a return if a task of the project was completed. A name is a link that opens the project in Things. Hovering a name fades
+A project is named where the work on it was. Above the strip are the projects
+whose first task was completed in the week, under it the closed projects whose
+last task was completed in it, each group on a dashed line from the week. A
+project without a completed task is named at its creation and at its closing,
+in grey. Above the strip only the projects that do not end within the year are
+drawn. Hovering a week brings up the rest: the projects that end later in the
+year, and the canceled ones. A canceled project is not drawn otherwise, and a
+project that lasted less than two days is not shown. The "show all" switch of
+the card names every project, both where it starts and where it ends. Copies of
+repeating projects are never shown. An open project scheduled in Things to
+start on a day still ahead stands over the week of that day only, as a hollow
+dot and a name in italics; the day is called a return if a task of the project
+was completed.
+
+A double click on a name opens the project in Things. Hovering a name fades
 everything but the project: the weeks it lived through stay bright, from its
-start to its closing, or to today
-for an open one. The dates of the start and of the closing and the length of
-the project are written beside it; a date outside the shown year is given with
-an arrow at that edge of the strip. Between the start and the closing two ticks
-cross the strip, each with its date: the week of the first completed task and
-the week of the last one. A tick in the week of the start or of the closing is
-not drawn, and the first and the last task of one week share a tick. The day
-ahead a project is scheduled for is a third tick, in grey.
+creation to its closing, or to today for an open one, and the length of the
+project is written over them. The date of the task is written beside each name.
+The weeks of the creation and of the closing, where they are not the weeks of
+the names, are ticks across the strip with their dates over it, on both sides of the length; a date outside the shown
+year is given with an arrow at that edge of the strip. An open project has no
+name for its end: its second tick is the week of its last completed task. A
+click on a name pins the project: it stays lit until its name is clicked again,
+another name or the chart beside them.
 
 Under the strip are the totals of the year in one line: tasks added, closed and
 canceled, and projects added, closed and canceled. A project is added on the day
-its first task was completed.
+it was created and closed on the day it was closed, wherever its names stand.
 
 ## History
 
