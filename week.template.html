@@ -708,19 +708,12 @@ for (const p of DATA.pr) {
   const ws = mondayOf(p[1]);
   (CLOSED_IN[ws] = CLOSED_IN[ws] || []).push(p);
 }
-const STARTED_IN = {};                            // {week start: [[title, start date, closing date, status, in Someday, id]]}
+const STARTED_IN = {};                            // {week start: [[title, start date, closing date, status, in Someday, id, first completed task, last one]]}
 for (const p of DATA.ps) (STARTED_IN[mondayOf(p[1])] = STARTED_IN[mondayOf(p[1])] || []).push(p);
-// closed projects in which no task was ever completed: they have not "started",
-// so they are not in DATA.ps, but their life is drawn from the day they were
-// created, and their name stands above that week
-const UNSTARTED_IN = {};                          // {week of creation: [[title, creation date, closing date, status, id]]}
-{
-  const known = new Set(DATA.ps.map(p => p[0] + "|" + p[1] + "|" + (p[2] || "")));
-  for (const [title, to, st, from, id] of DATA.pr) {
-    if (known.has(title + "|" + from + "|" + to)) continue;
-    (UNSTARTED_IN[mondayOf(from)] = UNSTARTED_IN[mondayOf(from)] || []).push([title, from, to, st, id]);
-  }
-}
+// {project id: [day of the first completed task, day of the last one]}, nulls without such a task
+const DONE = Object.fromEntries(DATA.ps.map(p => [p[5], [p[6], p[7]]]));
+// {project id: the day ahead the project is scheduled to start on}
+const AHEAD = Object.fromEntries(DATA.pp.map(([, at, id]) => [id, at]));
 // [added, closed] in a week over all tasks, from its flow [new open, new closed, old closed]
 const FLOW_OF = ws => { const f = DATA.wk[ws].f; return [f[0] + f[1], f[1] + f[2]]; };
 // how dark a week is: by the tasks closed in it, against a busy week of the
@@ -804,16 +797,16 @@ function drawYear() {
   // above it they come up when their week is hovered
   const started = ws => (STARTED_IN[ws] || []).map(([title, from, to, st, someday, id]) => ({ title, from, to, st, someday, id })).filter(lasted);
   const endsHere = p => p.to && slots.some(q => q.ws === mondayOf(p.to));
-  const unstarted = ws => (UNSTARTED_IN[ws] || []).map(([title, from, to, st, id]) => ({ title, from, to, st, id })).filter(lasted);
   // projects scheduled to start on a day still ahead stand over the week of that day
-  // (at: that day). One that has already begun, with a completed task behind it,
-  // keeps the dates of its life, so this name and the name over its start are one project
+  // (at: that day), and only there: the name over the start of such a project
+  // comes up with the project. Both keep the dates of its life, so they are one project
   const planned = ws => DATA.pp.filter(q => mondayOf(q[1]) === ws).map(([title, at, id]) => {
     const life = DATA.ps.find(q => q[5] === id);
-    return life ? { title, from: life[1], to: life[2], st: life[3], someday: life[4], id, planned: true, at, begun: true }
-                : { title, from: at, id, planned: true, at };
+    return life ? { title, from: life[1], to: life[2], st: life[3], someday: life[4], id, planned: true, at }
+                : { title, from: at, id, planned: true, at, lifeless: true };
   });
-  const above = layOut(ws => started(ws).concat(unstarted(ws)).sort(byTitle).concat(planned(ws)), p => !p.planned && (p.st === 2 || endsHere(p)));
+  const above = layOut(ws => started(ws).sort(byTitle).concat(planned(ws)),
+    p => !p.planned && (p.st === 2 || endsHere(p) || p.id in AHEAD));
   // completed projects first, canceled ones after them
   const below = layOut(ws => (CLOSED_IN[ws] || []).map(([title, to, st, from, id]) => ({ title, from, to, st, id }))
     .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)), p => p.st === 2);
@@ -903,8 +896,8 @@ function drawYear() {
   // a note of the hovered project: small text on a patch of card colour, so the
   // faded names behind it do not show through
   const OPENED = p => "открыто: " + human(addDays(p.from, 0));
-  // over a planned name: the day ahead, a start for a project not begun yet, a return for one that has
-  const PLANNED = p => (p.begun ? "возобновление: " : "старт: ") + human(addDays(p.at, 0));
+  // over a planned name: the day ahead, a return to a project with a completed task, else a start
+  const PLANNED = p => ((DONE[p.id] || [])[0] ? "возобновление: " : "старт: ") + human(addDays(p.at, 0));
   const CLOSED = p => (p.st === 3 ? "закрыто: " : "отменено: ") + human(addDays(p.to, 0));
   // dates are in italics, the length of the project in bold
   function caption(text, x, y, anchor, bold) {
@@ -944,7 +937,7 @@ function drawYear() {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
     cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
     for (const e of others) e.setAttribute("opacity", FADE);
-    if (p.planned && !p.begun) return;            // it has no life yet: nothing to measure
+    if (p.lifeless) return;                       // nothing to measure
 
     // just over the strip: an arrow at the edge the project runs past, with the
     // date that lies beyond it, and the length of the project over its middle
@@ -958,6 +951,45 @@ function drawYear() {
     const x0 = Math.min(Math.max(mid.box.x, lo), Math.max(lo, hi - w));
     mid.setAttribute("transform", `translate(${x0 - mid.box.x},0)`);
     notes.push(mid, left, right);
+    showTicks(p);
+  }
+  // ticks across the strip inside the life of the lit project: the weeks of its
+  // first and of its last completed task, each with its date under the strip,
+  // and, in grey, the week of the day ahead it is scheduled for. A tick in the
+  // week of the start or of the closing is left out, the name there stands for
+  // it; the first and the last task of one week share a tick.
+  function showTicks(p) {
+    const [first, last] = DONE[p.id] || [], at = AHEAD[p.id];
+    const ends = [mondayOf(p.from), p.to && mondayOf(p.to)];
+    const inYear = day => slots.some(q => q.ws === mondayOf(day));
+    const inner = day => day && !ends.includes(mondayOf(day)) && inYear(day);
+    const y1 = padT - 3, y2 = padT + plotH + 3;
+    const tick = (day, tone) => {
+      const cx = Math.round(padL + weekOf(day) * slotW + slotW / 2) + .5, g = el("g");
+      g.appendChild(el("line", { x1: cx, y1, x2: cx, y2, stroke: css("--card"), "stroke-width": 2 }));
+      g.appendChild(el("line", { x1: cx, y1, x2: cx, y2, stroke: css(tone), "stroke-width": 0.75 }));
+      spot.appendChild(g); notes.push(g);
+      return cx;
+    };
+    // a date takes the first place where it runs into nothing lit: under its
+    // tick on the side it leans to, on the other side, then a row lower
+    const taken = [...spot.children].map(g => g.getBBox());
+    const hits = b => taken.some(t => b.x < t.x + t.width + 4 && b.x + b.width + 4 > t.x && b.y < t.y + t.height && b.y + b.height > t.y);
+    const date = (text, cx, lean) => {
+      let c = null;
+      for (const [side, row] of [[lean, 0], [-lean, 0], [lean, 1], [-lean, 1], [lean, 2]]) {
+        if (c) c.remove();
+        c = caption(text, cx + side * 4, y2 + 13 + row * 13, side < 0 ? "end" : "start");
+        if (!hits(c.box)) break;
+      }
+      taken.push(c.box); notes.push(c);
+    };
+    const day = iso => human(addDays(iso, 0));
+    const one = first && mondayOf(first) === mondayOf(last);
+    if (inner(first))
+      date(!one ? "первая задача: " + day(first) : first === last ? "задачи: " + day(first) : "задачи: " + day(first) + " – " + day(last), tick(first, "--ink"), -1);
+    if (!one && inner(last)) date("последняя задача: " + day(last), tick(last, "--ink"), 1);
+    if (at && inYear(at)) tick(at, "--ink-3");
   }
   function hideSpan() {
     for (const e of cells.concat(others)) e.removeAttribute("opacity");

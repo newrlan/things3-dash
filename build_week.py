@@ -426,34 +426,39 @@ def idle_weeks(week_projects, weeks):
     return idle
 
 
-def project_starts(con, tasks):
-    """{project uuid: start date}. A project starts on the day its first to-do was
-    completed; one without a completed to-do has not started."""
-    # the exact day while the to-dos are in Things, else the week kept in the history
-    started = dict(con.execute("""SELECT project_uuid, MIN(week_start) FROM project_week
-                                  WHERE closed_old_completed + closed_new_completed > 0 GROUP BY 1"""))
+def done_spans(con, tasks):
+    """{project uuid: [day of the first completed to-do, day of the last one]}."""
+    # the exact days while the to-dos are in Things; a week kept in the history
+    # that lies outside them gives its Monday
+    spans = {u: [date.fromisoformat(a), date.fromisoformat(b)] for u, a, b in con.execute(
+        """SELECT project_uuid, MIN(week_start), MAX(week_start) FROM project_week
+           WHERE closed_old_completed + closed_new_completed > 0 GROUP BY 1""")}
     live = {}
     for t in tasks:
         if t["s"] and not t["canceled"] and t["s"] <= TODAY:
-            live[t["project"]] = min(t["s"], live.get(t["project"], t["s"]))
-    started.update({u: iso(day) for u, day in live.items()})
-    return started
+            a, b = live.get(t["project"], (t["s"], t["s"]))
+            live[t["project"]] = (min(a, t["s"]), max(b, t["s"]))
+    for u, (a, b) in live.items():
+        ha, hb = spans.get(u, (a, b))
+        spans[u] = [ha if ha < week_start(a) else a, hb if hb > week_start(b) else b]
+    return {u: [iso(a), iso(b)] for u, (a, b) in spans.items()}
 
 
 def year_projects(con, tasks, someday):
     """Projects for the year tab, copies of repeating projects left out:
-    closed ones as [title, closing date, status, start date, uuid], where a project
-    without a completed to-do starts on the day it was created, and the ones
-    that have started as [title, start date, closing date, status, in Someday, uuid].
+    closed ones as [title, closing date, status, start date, uuid] and all of them
+    as [title, start date, closing date, status, in Someday, uuid, day of the first
+    completed to-do, day of the last one], the two days None without such a to-do.
+    A project starts on the day it was created.
     The uuid is what a things:///show?id= link takes."""
-    started = project_starts(con, tasks)
+    done = done_spans(con, tasks)
     closed, starts = [], []
     for u, t, c, s, st in con.execute("""SELECT project_uuid, title, created, closed, status FROM project
                                          WHERE NOT repeating ORDER BY closed, title"""):
-        if u in started:
-            starts.append([t, min(started[u], s or started[u]), s, st, int(u in someday), u])
+        c = min(c, s or c)
+        starts.append([t, c, s, st, int(u in someday), u, *done.get(u, [None, None])])
         if s and st in (2, 3):
-            closed.append([t, s, st, min(started.get(u, c), s), u])
+            closed.append([t, s, st, c, u])
     return closed, sorted(starts, key=lambda x: (x[1], x[0]))
 
 

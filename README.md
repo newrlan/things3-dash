@@ -42,15 +42,18 @@ closed later in the year, and the canceled ones. A canceled project is not
 drawn otherwise, and a project that lasted less than two days is not shown. The
 "show all" switch of the card names every project, both where it started and
 where it was closed. Copies of repeating projects are never shown. A
-project starts on the day its first task was completed. An open project scheduled in Things to start on a
-day still ahead stands over the week of that day, as a hollow dot and a name in
-italics; if the project has already begun, it is named over its start as well,
-and the day ahead is called a return. A name is a link that opens the project in Things. Hovering a name fades
+project starts on the day it was created. An open project scheduled in Things to start on a
+day still ahead stands over the week of that day only, as a hollow dot and a name in
+italics; the day is called a return if a task of the project was completed. A name is a link that opens the project in Things. Hovering a name fades
 everything but the project: the weeks it lived through stay bright, from its
-start (or its creation, if no task was completed) to its closing, or to today
+start to its closing, or to today
 for an open one. The dates of the start and of the closing and the length of
 the project are written beside it; a date outside the shown year is given with
-an arrow at that edge of the strip.
+an arrow at that edge of the strip. Between the start and the closing two ticks
+cross the strip, each with its date: the week of the first completed task and
+the week of the last one. A tick in the week of the start or of the closing is
+not drawn, and the first and the last task of one week share a tick. The day
+ahead a project is scheduled for is a third tick, in grey.
 
 Under the strip are the totals of the year in one line: tasks added, closed and
 canceled, and projects added, closed and canceled. A project is added on the day
