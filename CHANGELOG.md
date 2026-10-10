@@ -7,25 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
 ### Added
 
 - Year tab: a strip of the weeks of a year, each week the darker the more tasks
-  were closed in it. Navigation by year; a double click on a week opens it on
-  the week tab.
-- Year tab: the names of the projects started in each week above the strip and
-  of the projects closed in it under the strip; hovering a name
-  marks the weeks from the start of the project to its closing. Copies of
-  repeating projects are left out.
-- Project names are links that open the project in Things, on the year tab and
-  in "Projects of the week".
-- Year tab: canceled projects are shown only on hover; the "show all" switch
-  names every project.
+  were closed in it. Navigation by year; hovering a week gives its dates and
+  the tasks closed and added in it; a double click on a week opens it on the
+  week tab.
+- Year tab: a project is named where the work on it was: above the strip over
+  the week of its first completed task, under the strip, once it is closed,
+  at the week of its last completed task. A project without a completed task
+  is named at its creation and at its closing, in grey. Copies of repeating
+  projects are left out.
+- Year tab: hovering a name marks the weeks from the creation of the project to
+  its closing, with its length; the weeks of the creation and of the closing
+  are ticks with their dates, and an open project has a tick at its last
+  completed task.
+- Year tab: a click on a name pins the project, and hovering a week then gives
+  the tasks of that project; a double click opens the project in Things.
+- Year tab: canceled projects and projects that lasted less than two days are
+  shown only with the "show all" switch.
 - Year tab: the totals of the year under the strip: tasks and projects, each as
   added, closed and canceled.
-- "Projects of the week": a project in which no task was closed for two weeks or
-  more is marked "стоит N недель".
 - Year tab: open projects scheduled to start on a day still ahead, over the week
   of that day.
+- "Projects of the week": a project name is a link that opens the project in
+  Things.
+- "Projects of the week": a project in which no task was closed for two weeks or
+  more is marked "стоит N недель".
 
 ## [0.3.1] - 2026-10-05
 
@@ -97,7 +107,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local http server `serve.py` with a refresh button on the page.
 - README with setup and usage instructions, dashboard screenshot.
 
-[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/newrlan/things3-dash/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/newrlan/things3-dash/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/newrlan/things3-dash/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/newrlan/things3-dash/compare/v0.1.0...v0.2.0
