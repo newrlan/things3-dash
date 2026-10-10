@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS project (
   status       INTEGER NOT NULL,
   first_seen   {DATE.format("first_seen")},
   last_seen    {DATE.format("last_seen")},
-  deleted_at   TEXT
+  deleted_at   TEXT,
+  repeating    INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS meta (
   key    TEXT PRIMARY KEY,
@@ -165,10 +166,12 @@ def read_things():
                    creationDate,    -- unix time
                    stopDate,        -- unix time, set when completed or canceled
                    start,           -- 0 = Inbox, 1 = Anytime, 2 = Someday
+                   startDate,       -- the day the item is scheduled to start on, packed, see things_date
                    userModificationDate,  -- unix time of the last edit, any change
                    project,         -- uuid of the parent project
                    heading,         -- uuid of the parent heading, when the item sits under one
                    area,            -- uuid of the area
+                   rt1_repeatingTemplate,  -- uuid of the repeating template this item was made from
                    CASE WHEN type IN (1, 2) THEN title ELSE '' END AS item_title
             FROM TMTask
             WHERE trashed = 0""")]
@@ -220,14 +223,16 @@ def update_projects(con, rows, alive):
         area = keep_area(r["area"], prev.get(r["uuid"]), alive)
         out[r["uuid"]] = (area, r)
         upserts.append((r["uuid"], r["item_title"] or "(без названия)", area, iso(d(r["creationDate"])),
-                        iso(d(r["stopDate"])), int(r["status"]), today, today))
+                        iso(d(r["stopDate"])), int(r["status"]), today, today,
+                        int(bool(r["rt1_repeatingTemplate"]))))
     con.executemany("""
-        INSERT INTO project (project_uuid, title, area_uuid, created, closed, status, first_seen, last_seen)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO project (project_uuid, title, area_uuid, created, closed, status, first_seen, last_seen,
+                             repeating)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (project_uuid) DO UPDATE SET
           title = excluded.title, area_uuid = excluded.area_uuid, created = excluded.created,
           closed = excluded.closed, status = excluded.status, last_seen = excluded.last_seen,
-          deleted_at = NULL""", upserts)
+          deleted_at = NULL, repeating = MAX(repeating, excluded.repeating)""", upserts)
     gone = [(today, u) for (u,) in con.execute("SELECT project_uuid FROM project WHERE deleted_at IS NULL")
             if u not in out]
     con.executemany("UPDATE project SET deleted_at = ? WHERE project_uuid = ?", gone)
@@ -366,16 +371,26 @@ def freeze(con, flows, pweeks, alive, since):
 
 # ---- 4. page data ------------------------------------------------------------
 
-def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
-    """One week for the page: wheel spokes, the flow bar, project rows.
-    touched is {area: to-dos touched}, or None for a week without this number."""
+def week_payload(ws, flow_rows, spokes, touched, project_rows, meta, idle):
+    """One week for the page: wheel spokes, the flow bar, the flow of the tasks
+    with an area for the year tab, project rows, and for the year tab the flow
+    of every project as {project: [added, closed]}, the ones without it left out.
+    touched is {area: to-dos touched}, or None for a week without this number;
+    idle is {project: weeks in a row without a closed to-do, this week included}."""
     closed = defaultdict(int)
     new_open = new_closed = old_closed = 0
+    area_added = area_closed = 0                    # the same flow, tasks without an area left out
+    completed = canceled = 0                        # closed tasks by how they ended, for the year tab
     for (_, a), v in flow_rows:
         closed[a] += v[1] + v[2] + v[3] + v[4]
         new_open += v[0]
         new_closed += v[1] + v[2]
         old_closed += v[3] + v[4]
+        completed += v[1] + v[3]
+        canceled += v[2] + v[4]
+        if a != NO_AREA:
+            area_added += v[0] + v[1] + v[2]
+            area_closed += v[1] + v[2] + v[3] + v[4]
     title = lambda a: spokes.get(a) or meta["areas"][a]
     wheel = [[title(a), closed[a], touched.get(a, 0) if touched is not None else None]
              for a in sorted(set(spokes) | set(closed) | set(touched or ()), key=title)]
@@ -388,11 +403,80 @@ def week_payload(ws, flow_rows, spokes, touched, project_rows, meta):
             continue
         oo, on, coc, coca, cnc, cnca = v[3:]
         state = "open" if not closed_on else ("wk" if closed_on <= end else "later")
-        rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on])
-    return {"a": wheel, "f": [new_open, new_closed, old_closed], "p": rows}
+        rows.append([name, state, closed_on, coc + coca, cnc + cnca, oo, on, pu, idle.get(pu, 0)])
+    own = {pu: [v[4] + v[7] + v[8], sum(v[5:])] for pu, v in project_rows.items() if v[4] or any(v[5:])}
+    return {"a": wheel, "f": [new_open, new_closed, old_closed], "g": [area_added, area_closed],
+            "c": [completed, canceled], "p": rows, "y": own}
 
 
-def build_payload(con, flows, pweeks, alive):
+def idle_weeks(week_projects, weeks):
+    """{week: {project: weeks in a row in which no to-do of the project was closed,
+    that week included}}. The count runs over the weeks the project has a row in
+    and starts anew after a gap."""
+    index = {w: i for i, w in enumerate(weeks)}
+    rows = defaultdict(list)
+    for w, projects in week_projects.items():
+        for pu, v in projects.items():
+            rows[pu].append((index[w], sum(v[5:9])))        # the four closed_* counts
+    idle = defaultdict(dict)
+    for pu, seq in rows.items():
+        streak, before = 0, None
+        for i, closed in sorted(seq):
+            streak = 0 if closed else (streak + 1 if before == i - 1 else 1)
+            before = i
+            idle[weeks[i]][pu] = streak
+    return idle
+
+
+def done_spans(con, tasks):
+    """{project uuid: [day of the first completed to-do, day of the last one]}."""
+    # the exact days while the to-dos are in Things; a week kept in the history
+    # that lies outside them gives its Monday
+    spans = {u: [date.fromisoformat(a), date.fromisoformat(b)] for u, a, b in con.execute(
+        """SELECT project_uuid, MIN(week_start), MAX(week_start) FROM project_week
+           WHERE closed_old_completed + closed_new_completed > 0 GROUP BY 1""")}
+    live = {}
+    for t in tasks:
+        if t["s"] and not t["canceled"] and t["s"] <= TODAY:
+            a, b = live.get(t["project"], (t["s"], t["s"]))
+            live[t["project"]] = (min(a, t["s"]), max(b, t["s"]))
+    for u, (a, b) in live.items():
+        ha, hb = spans.get(u, (a, b))
+        spans[u] = [ha if ha < week_start(a) else a, hb if hb > week_start(b) else b]
+    return {u: [iso(a), iso(b)] for u, (a, b) in spans.items()}
+
+
+def year_projects(con, tasks, someday):
+    """Projects for the year tab, copies of repeating projects left out, as
+    [title, creation date, closing date, status, in Someday, uuid, day of the first
+    completed to-do, day of the last one], the two days None without such a to-do.
+    The uuid is what a things:///show?id= link takes."""
+    done = done_spans(con, tasks)
+    starts = []
+    for u, t, c, s, st in con.execute("""SELECT project_uuid, title, created, closed, status FROM project
+                                         WHERE NOT repeating ORDER BY closed, title"""):
+        c = min(c, s or c)
+        starts.append([t, c, s, st, int(u in someday), u, *done.get(u, [None, None])])
+    return sorted(starts, key=lambda x: (x[1], x[0]))
+
+
+def things_date(v):
+    """Things packs a calendar date into one number: year, month and day in bit fields."""
+    return date(v >> 16, (v >> 12) & 15, (v >> 7) & 31) if v else None
+
+
+def planned_projects(projects):
+    """Open projects scheduled to start on a day still ahead: [title, start date, uuid],
+    soonest first. Copies of repeating projects stay out, as everywhere on the year tab."""
+    out = []
+    for u, (_, r) in projects.items():
+        day = things_date(r["startDate"])
+        if r["status"] == 0 and day and day > TODAY and not r["rt1_repeatingTemplate"]:
+            out.append([r["item_title"] or "(без названия)", iso(day), u])
+    return sorted(out, key=lambda x: (x[1], x[0]))
+
+
+def build_payload(con, flows, pweeks, alive, tasks, someday, planned):
     current = week_start(TODAY)
     meta = {
         "areas": dict(con.execute("SELECT area_uuid, title FROM area")),
@@ -411,14 +495,18 @@ def build_payload(con, flows, pweeks, alive):
     for w, pu, *v in con.execute("SELECT * FROM project_week"):
         week_projects[w][pu] = v
     frozen = [w for (w,) in con.execute("SELECT week_start FROM week ORDER BY week_start")]
+    # the running week is computed live
+    week_projects[iso(current)] = pweeks.get(current, {})
+    idle = idle_weeks(week_projects, sorted(set(frozen) | {iso(current)}))
 
     wk = {w: week_payload(date.fromisoformat(w), week_flow[w], week_spokes[w], week_touched.get(w),
-                          week_projects[w], meta)
+                          week_projects[w], meta, idle[w])
           for w in frozen}
-    # the running week is computed live; its spokes are the areas that exist now
+    # the spokes of the running week are the areas that exist now
     week_flow[iso(current)] = [((iso(day), a), v) for (day, a), v in flows.get(current, {}).items()]
     wk[iso(current)] = week_payload(current, week_flow[iso(current)], {a: meta["areas"][a] for a in alive},
-                                    touched_by_area(con, iso(current)), pweeks.get(current, {}), meta)
+                                    touched_by_area(con, iso(current)), week_projects[iso(current)], meta,
+                                    idle[iso(current)])
 
     weeks = sorted(wk)
     # closures per day from the first week to today, for the weekday chart
@@ -428,7 +516,8 @@ def build_payload(con, flows, pweeks, alive):
         for (day, _), v in week_flow[w]:
             closed[(date.fromisoformat(day) - first).days] += v[1] + v[2] + v[3] + v[4]
     return {"weeks": weeks, "current": iso(current), "today": iso(TODAY),
-            "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen)}
+            "days": {"s": iso(first), "closed": closed}, "wk": wk, "frozen": len(frozen),
+            "ps": year_projects(con, tasks, someday), "pp": planned}
 
 
 def main():
@@ -441,6 +530,8 @@ def main():
     con.executescript(SCHEMA)
     if "touched" not in [c[1] for c in con.execute("PRAGMA table_info(area_week)")]:
         con.execute("ALTER TABLE area_week ADD COLUMN touched INTEGER")     # history made before touches
+    if "repeating" not in [c[1] for c in con.execute("PRAGMA table_info(project)")]:
+        con.execute("ALTER TABLE project ADD COLUMN repeating INTEGER NOT NULL DEFAULT 0")
     # one write transaction: a second refresh waits for the first one and then
     # finds the weeks already frozen
     con.execute("BEGIN IMMEDIATE")
@@ -458,7 +549,8 @@ def main():
         con.execute("ROLLBACK")
         raise
 
-    payload = build_payload(con, flows, pweeks, alive)
+    someday = {u for u, (_, r) in projects.items() if r["start"] == 2}
+    payload = build_payload(con, flows, pweeks, alive, tasks, someday, planned_projects(projects))
     con.close()
 
     blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

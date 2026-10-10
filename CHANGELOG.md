@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Year tab: a strip of the weeks of a year, each week the darker the more tasks
+  were closed in it. Navigation by year; a double click on a week opens it on
+  the week tab.
+- Year tab: the names of the projects started in each week above the strip and
+  of the projects closed in it under the strip; hovering a name
+  marks the weeks from the start of the project to its closing. Copies of
+  repeating projects are left out.
+- Project names are links that open the project in Things, on the year tab and
+  in "Projects of the week".
+- Year tab: canceled projects are shown only on hover; the "show all" switch
+  names every project.
+- Year tab: the totals of the year under the strip: tasks and projects, each as
+  added, closed and canceled.
+- "Projects of the week": a project in which no task was closed for two weeks or
+  more is marked "стоит N недель".
+- Year tab: open projects scheduled to start on a day still ahead, over the week
+  of that day.
+
 ## [0.3.1] - 2026-10-05
 
 ### Added

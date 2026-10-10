@@ -9,24 +9,24 @@
     color-scheme: light;
     --surface:#fcfcfb; --card:#ffffff; --border:#e6e5e1; --line:#3a3936;
     --ink:#0b0b0b; --ink-2:#52514e; --ink-3:#83817b;
-    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6; --touch:#bdbbb5;
-    --cl1:#1c5cab; --cl2:#6da7ec; --op1:#b8322f; --op2:#f0918e; --grid-b:#eceae6;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --old:#dedcd6; --touch:#bdbbb5; --pick:#e3ecf7;
+    --cl1:#1c5cab; --cl2:#6da7ec; --op1:#b8322f; --op2:#f0918e; --grid-b:#eceae6; --fill:#f9f8f6;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
       --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
       --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
-      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56;
-      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56; --pick:#1f2f47;
+      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28; --fill:#1e1e1d;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
     --surface:#131312; --card:#1a1a19; --border:#2e2e2c; --line:#9d9c94;
     --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8d8c84;
-    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56;
-      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --old:#403f3b; --touch:#5c5b56; --pick:#1f2f47;
+      --cl1:#256abf; --cl2:#86b6ef; --op1:#c8403c; --op2:#f0918e; --grid-b:#2a2a28; --fill:#1e1e1d;
   }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--surface); color:var(--ink);
@@ -43,7 +43,10 @@
   }
   .top { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
   h1 { font-size:25px; font-weight:640; letter-spacing:-.02em; margin:0; }
-  .top button { margin-left:auto; }
+  .top #refresh { margin-left:auto; }
+  .sub { font-size:12px; color:var(--ink-2); margin-bottom:6px; }
+  .tabs { display:flex; gap:4px; margin-left:8px; }
+  .tabs button.on { background:var(--card); border-color:var(--ink-3); font-weight:600; }
 
   .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
     background:var(--card); border:1px solid var(--border); border-radius:10px;
@@ -72,6 +75,7 @@
   .chart { width:100%; overflow-x:auto; }
   svg { display:block; }
   .rowlab { font-size:13px; font-weight:600; fill:var(--ink-2); cursor:default; }
+  a .rowlab { cursor:pointer; }
   .val { font-size:10px; font-variant-numeric:tabular-nums; fill:var(--ink-3); }
 
   .tip { position:fixed; z-index:20; pointer-events:none; opacity:0;
@@ -90,6 +94,8 @@
   .legend span { display:flex; align-items:center; gap:6px; }
   .legend i { width:10px; height:10px; border-radius:2px; }
   .legend b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .legend .group { display:flex; flex-wrap:wrap; gap:4px 18px; padding:3px 10px; border-radius:4px;
+                   background:var(--fill); }
   .empty { color:var(--ink-3); font-size:13px; padding:20px 2px; }
 </style>
 </head>
@@ -97,11 +103,16 @@
 <div class="wrap">
 
 <div class="top">
-  <h1>Неделя по проектам</h1>
+  <h1 id="title">Неделя по проектам</h1>
+  <div class="tabs">
+    <button data-tab="week">Неделя</button>
+    <button data-tab="year">Год</button>
+  </div>
   <span class="rstat" id="rstat"></span>
   <button id="refresh" hidden>Обновить данные</button>
 </div>
 
+<div id="tab-week">
 <div class="bar">
   <button id="prev">&larr;</button>
   <span class="week" id="wlabel"></span>
@@ -130,6 +141,23 @@
 <div class="card">
   <div class="bhd"><h2>Проекты недели</h2></div>
   <div class="chart" id="chart"></div>
+</div>
+</div>
+
+<div id="tab-year" hidden>
+<div class="bar">
+  <button id="yprev">&larr;</button>
+  <span class="week" id="ylabel"></span>
+  <button id="ynext">&rarr;</button>
+  <button id="ytoday">Текущий год</button>
+  <label>Год <select id="ysel"></select></label>
+</div>
+
+<div class="card">
+  <div class="bhd"><h2>Проекты года</h2>
+    <label style="margin-left:auto"><input type="checkbox" id="yall"> show all</label></div>
+  <div class="chart" id="yflow"></div>
+</div>
 </div>
 </div>
 <div class="tip" id="tip"></div>
@@ -190,6 +218,20 @@ function barL(x, y, w, h, r) {
   r = Math.min(r, h / 2, w);
   return `M${x+w},${y} L${x+r},${y} Q${x},${y} ${x},${y+r} L${x},${y+h-r} Q${x},${y+h} ${x+r},${y+h} L${x+w},${y+h} Z`;
 }
+function niceTicks(max, count) {
+  if (max <= 0) return [0];
+  const raw = max / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(v => v >= raw) || 10 * mag;
+  const top = Math.ceil(max / step) * step, out = [];
+  for (let v = 0; v <= top + step * 0.001; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+// the three parts of a week's flow, in the order of DATA.wk[week].f
+const FLOW = [
+  { color: () => css("--op2"), name: "Новые не закрытые задачи" },
+  { color: () => css("--cl2"), name: "Новые закрытые задачи" },
+  { color: () => css("--cl1"), name: "Старые закрытые задачи" }
+];
 let week = DATA.current;
 
 
@@ -474,13 +516,8 @@ function drawAreas() {
 // was added and already done, and what was done from earlier weeks
 function drawFlow() {
   const node = document.getElementById("flow");
-  const [newOpen, newDone, oldDone] = DATA.wk[week].f;
-  const segs = [
-    { n: newOpen, color: css("--op2"), name: "Новые не закрытые задачи" },
-    { n: newDone, color: css("--cl2"), name: "Новые закрытые задачи" },
-    { n: oldDone, color: css("--cl1"), name: "Старые закрытые задачи" }
-  ];
-  const sum = newOpen + newDone + oldDone;
+  const segs = FLOW.map((g, i) => ({ n: DATA.wk[week].f[i], color: g.color(), name: g.name }));
+  const sum = segs.reduce((a, g) => a + g.n, 0);
   if (!sum) {
     node.innerHTML = '<div class="empty">На этой неделе ничего не добавлено и не сделано.</div>';
     return;
@@ -527,10 +564,14 @@ function drawFlow() {
   node.appendChild(leg);
 }
 
+// "2 недели", "5 недель", "21 неделю": how long, in the accusative
+const weeksWord = n => n + " " + (n % 10 === 1 && n % 100 !== 11 ? "неделю"
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "недели" : "недель");
 function draw() {
-  // [title, state, closed date, co, cn, oo, on]; Someday and canceled projects
-  // are already left out by build_week.py
-  const ps = DATA.wk[week].p.map(([t, st, ed, co, cn, oo, on]) => ({ p: { t, st, ed }, c: { co, cn, oo, on } }));
+  // [title, state, closed date, co, cn, oo, on, id, idle]; Someday and canceled
+  // projects are already left out by build_week.py. idle: weeks in a row without
+  // a closed task, this week included
+  const ps = DATA.wk[week].p.map(([t, st, ed, co, cn, oo, on, id, idle]) => ({ p: { t, st, ed, id, idle }, c: { co, cn, oo, on } }));
   // most open tasks first, ties by name
   ps.sort((a, b) => (b.c.oo + b.c.on) - (a.c.oo + a.c.on) || a.p.t.localeCompare(b.p.t));
 
@@ -558,7 +599,9 @@ function draw() {
   const unit = Math.max(3, Math.min(22, avail / (maxR + maxL)));
   const rowH = 26, barH = 15;
   const zeroX = labW + maxL * unit;
-  const W = Math.max(300, labW + (maxL + maxR) * unit + padR);
+  // a project that has not moved for two weeks or more is told so, right of the zero line
+  const stalled = x => x.p.st !== "wk" && x.p.idle >= 2;
+  const W = Math.max(300, labW + (maxL + maxR) * unit + padR, ps.some(stalled) ? zeroX + 120 : 0);
   const H = ps.length * rowH + 10;
 
   const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
@@ -587,6 +630,10 @@ function draw() {
       const t = el("text", { class: "val", x: xl - 5, y: yb + barH - 3, "text-anchor": "end" });
       t.textContent = x.c.oo + x.c.on; svg.appendChild(t);
     }
+    if (stalled(x)) {
+      const t = el("text", { x: zeroX + 8, y: yb + barH - 3, "font-size": 11, "font-style": "italic", fill: css("--ink-3") });
+      t.textContent = "стоит " + weeksWord(x.p.idle); svg.appendChild(t);
+    }
 
     const st = x.p.st;
     if (STATE[st].mark) {
@@ -600,7 +647,9 @@ function draw() {
     const lab = el("text", { class: "rowlab", x: 4, y: yb + barH - 3 });
     const room = narrow ? 15 : 26;
     lab.textContent = x.p.t.length > room ? x.p.t.slice(0, room - 1) + "…" : x.p.t;
-    svg.appendChild(lab);
+    // the name is a link that opens the project in Things
+    const link = el("a", { href: "things:///show?id=" + encodeURIComponent(x.p.id) });
+    link.appendChild(lab); svg.appendChild(link);
 
     const hit = el("rect", { x: labW, y: y, width: W - labW, height: rowH, fill: "transparent" });
     hit.addEventListener("mousemove", ev => showTip(ev, x.p.t,
@@ -617,6 +666,489 @@ function draw() {
 }
 
 const wsel = document.getElementById("wsel");
+
+// ---- year tab ---------------------------------------------------------------
+// a week belongs to the year of its Thursday (ISO week-numbering year)
+const isoOf = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const yearOf = ws => addDays(ws, 3).getFullYear();
+const YEARS = [...new Set(DATA.weeks.map(yearOf))];
+let year = yearOf(DATA.current);
+// every week of the year, with or without data: the columns keep their place
+function weeksOf(y) {
+  const jan4 = new Date(y, 0, 4), out = [];
+  let ws = isoOf(addDays(isoOf(jan4), -((jan4.getDay() + 6) % 7)));
+  for (; yearOf(ws) === y; ws = isoOf(addDays(ws, 7))) out.push(ws);
+  return out;
+}
+
+// the projects of the year along a strip of weeks. A cell of the strip is one
+// week, the darker the more tasks were closed in it, all tasks counted; the
+// scale is the same for every year. Above the strip are the
+// projects whose first task was completed in each week, under it the closed
+// projects whose last task was completed in it, each group on a dashed line
+// from the week.
+// a project's life in words: calendar years, months and days
+function lifeSpan(from, to) {
+  const a = addDays(from, 0), b = addDays(to, 0);
+  // the same day of a later month, or its last day when the month is shorter
+  const after = m => new Date(a.getFullYear(), a.getMonth() + m,
+    Math.min(a.getDate(), new Date(a.getFullYear(), a.getMonth() + m + 1, 0).getDate()));
+  let months = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
+  while (months > 0 && after(months) > b) months--;
+  const days = Math.round((b - after(months)) / 864e5);
+  // "1 год", "3 года", "5 лет"; zero parts are left out
+  const word = (n, one, few, many) => n + " " +
+    (n % 10 === 1 && n % 100 !== 11 ? one : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many);
+  const y = Math.floor(months / 12), m = months % 12;
+  return [y ? word(y, "год", "года", "лет") : "", m ? word(m, "месяц", "месяца", "месяцев") : "",
+          days || !months ? word(days, "день", "дня", "дней") : ""].filter(Boolean).join(" ");
+}
+const mondayOf = iso => isoOf(addDays(iso, -((addDays(iso, 0).getDay() + 6) % 7)));
+// every project of the year tab by id. from, to: the days it was created and
+// closed; first, last: the days of its first and of its last completed task.
+// Its names stand where the work was: over the week of the first task (up) and,
+// for a closed project, under the week of the last one (down). A project
+// without a completed task is named at its creation and at its closing.
+const PROJ = {};
+const UP_IN = {}, DOWN_IN = {};                   // {week start: [project]}
+for (const [title, from, to, st, someday, id, first, last] of DATA.ps) {
+  const p = PROJ[id] = { title, from, to, st, someday, id, first, last, up: first || from, down: to && st ? last || to : null };
+  (UP_IN[mondayOf(p.up)] = UP_IN[mondayOf(p.up)] || []).push(p);
+  if (p.down) (DOWN_IN[mondayOf(p.down)] = DOWN_IN[mondayOf(p.down)] || []).push(p);
+}
+// {project id: the day ahead the project is scheduled to start on}
+const AHEAD = Object.fromEntries(DATA.pp.map(([, at, id]) => [id, at]));
+// [added, closed] in a week over all tasks, from its flow [new open, new closed, old closed]
+const FLOW_OF = ws => { const f = DATA.wk[ws].f; return [f[0] + f[1], f[1] + f[2]]; };
+// how dark a week is: by the tasks closed in it, against a busy week of the
+// whole history (the 95th percentile), so that years can be compared
+const HEAT_TOP = (() => {
+  const v = DATA.weeks.map(w => FLOW_OF(w)[1]).sort((a, b) => a - b);
+  return Math.max(1, v[Math.floor(v.length * 0.95)] || 1);
+})();
+const HEAT = n => 0.06 + 0.94 * Math.min(1, n / HEAT_TOP);
+// "show all" off: a canceled project and a project that lasted less than two
+// days are not shown, and a project that ends within the year is named only
+// where it ends. On: every project is named,
+// where it started and where it was closed.
+let showAll = false;
+function drawYear() {
+  const node = document.getElementById("yflow");
+  document.getElementById("ylabel").textContent = year;
+  document.getElementById("ysel").value = year;
+  document.getElementById("yprev").disabled = year <= YEARS[0];
+  document.getElementById("ynext").disabled = year >= YEARS[YEARS.length - 1];
+  document.getElementById("ytoday").disabled = year === yearOf(DATA.current);
+
+  let added = 0, closed = 0;
+  const slots = weeksOf(year).map(ws => {
+    const g = DATA.wk[ws] ? FLOW_OF(ws) : null;
+    if (!g) return { ws, g };
+    added += g[0]; closed += g[1];
+    return { ws, g };
+  });
+  if (!added && !closed) {
+    node.innerHTML = '<div class="empty">За этот год ничего не добавлено и не закрыто.</div>';
+    return;
+  }
+
+  const W = Math.max(520, node.clientWidth || 900);
+  const padL = 8, padR = 4, plotH = 26, padB = 22, rowH = 15;
+  const slotW = (W - padL - padR) / slots.length;
+
+  // project names around the columns: every name takes the first row where it
+  // fits, counting away from the plot. The names above have to be laid out
+  // before anything is drawn, because they push the plot down.
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = "500 11px " + getComputedStyle(document.body).fontFamily;
+  // every name takes a row where it does not run into the names of other weeks.
+  // hide(p): the name is not drawn until its project is lit. Such names take
+  // no room among the others: they queue on the line of their week right after
+  // its drawn names, and come up on plates over whatever is there.
+  function layOut(pick, hide) {
+    const rows = [], weeks = [];
+    let depth = 0;
+    slots.forEach((x, i) => {
+      const ps = pick(x.ws);
+      if (!ps.length) return;
+      const cx = Math.round(padL + i * slotW + slotW / 2) + .5, labels = [], later = [];
+      for (const p of ps) {
+        const text = p.title.length > 30 ? p.title.slice(0, 29) + "…" : p.title;
+        const w = ctx.measureText(text).width, left = cx + 5 + w > W - padR;
+        const l = { p, text, bare: !showAll && hide(p), x: left ? cx - 5 : cx + 5, anchor: left ? "end" : "start" };
+        if (l.bare) { later.push(l); continue; }
+        l.a = left ? cx - 5 - w : cx + 5; l.b = l.a + w;
+        labels.push(l);
+      }
+      // the names of a week go as one block of rows without gaps: the first run
+      // of rows where every name fits beside the names of the other weeks
+      const free = (r, l) => !(rows[r] || []).some(([u, v]) => l.a < v + 10 && l.b > u - 10);
+      let r0 = 0;
+      while (!labels.every((l, k) => free(r0 + k, l))) r0++;
+      labels.forEach((l, k) => { l.r = r0 + k; (rows[l.r] = rows[l.r] || []).push([l.a, l.b]); });
+      let next = Math.max(-1, ...labels.map(l => l.r)) + 1;
+      for (const l of later) { l.r = next++; labels.push(l); }
+      depth = Math.max(depth, next);
+      weeks.push({ x, cx, labels });
+    });
+    return { weeks, rows: Math.max(rows.length, depth) };
+  }
+  const byTitle = (a, b) => a.title.localeCompare(b.title);
+  // a project closed less than two days after its start is not shown
+  const lasted = p => showAll || !p.to || (addDays(p.to, 0) - addDays(p.from, 0)) / 864e5 >= 2;
+  // above the strip only the projects that do not end within this year are
+  // drawn: the ones that do are named under the strip, where they end, and
+  // above it they come up with their project
+  const inYear = iso => slots.some(q => q.ws === mondayOf(iso));
+  const started = ws => (UP_IN[ws] || []).filter(lasted);
+  const endsHere = p => p.down && inYear(p.down);
+  // projects scheduled to start on a day still ahead stand over the week of that day
+  // (at: that day), and only there: the name over the start of such a project
+  // comes up with the project. Both keep the dates of its life, so they are one project
+  const planned = ws => DATA.pp.filter(q => mondayOf(q[1]) === ws).map(([title, at, id]) =>
+    PROJ[id] ? Object.assign({}, PROJ[id], { planned: true, at })
+             : { title, from: at, id, planned: true, at, lifeless: true });
+  const above = layOut(ws => started(ws).sort(byTitle).concat(planned(ws)),
+    p => !p.planned && (p.st === 2 || endsHere(p) || p.id in AHEAD));
+  // completed projects first, canceled ones after them
+  const below = layOut(ws => (DOWN_IN[ws] || [])
+    .filter(lasted).sort((a, b) => b.st - a.st || byTitle(a, b)), p => p.st === 2);
+
+  const gapT = 20;                                // air above the strip, to match the names under it
+  const padT = 10 + (above.rows ? above.rows * rowH + 8 + gapT : 0);
+  const H = padT + plotH + padB;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  const drops = el("g"), names = el("g");
+  svg.appendChild(drops);
+  const halo = { stroke: css("--card"), "stroke-width": 3, "paint-order": "stroke", "stroke-linejoin": "round" };
+
+  const cells = [];                               // the cell of every week, to fade the ones outside a project
+  let month = -1;
+  // {project: [switch]}: turns its names bold or back, the one where it starts
+  // and the one where it ends; filled in when the names are drawn
+  const projMarks = {};
+  const projKey = p => p.title + "|" + p.from + "|" + (p.to || "");
+  const markProject = (p, on) => (projMarks[projKey(p)] || []).forEach(f => f(on));
+  // the week under the pointer is drawn again, larger, over its neighbours: a
+  // base of card colour so the cells beneath do not show through, then the colour
+  const grow = 4;
+  const pick = el("g", { visibility: "hidden", "pointer-events": "none" });
+  const big = { y: padT - grow, width: slotW - 2 + 2 * grow, height: plotH + 2 * grow, rx: 5 };
+  const pickBase = el("rect", Object.assign({ fill: css("--card"), stroke: css("--card"), "stroke-width": 2 }, big));
+  const pickTone = el("rect", Object.assign({ fill: css("--cl1") }, big));
+  pick.appendChild(pickBase); pick.appendChild(pickTone);
+  slots.forEach((x, i) => {
+    const x0 = padL + i * slotW;
+    // a month is named under the first week whose Thursday falls into it
+    const m = addDays(x.ws, 3).getMonth();
+    if (m !== month) {
+      month = m;
+      const lb = el("text", Object.assign({ class: "val", x: x0 + 2, y: H - 6 }, halo));
+      lb.textContent = MON[m]; svg.appendChild(lb);
+    }
+    // a week without data keeps its place as a faint cell
+    cells[i] = el("rect", { x: x0 + 1, y: padT, width: slotW - 2, height: plotH, rx: 3,
+      fill: css(x.g ? "--cl1" : "--grid-b"), "fill-opacity": x.g ? HEAT(x.g[1]) : 0.6 });
+    svg.appendChild(cells[i]);
+    if (!x.g) return;
+    const hit = el("rect", { x: x0, y: padT, width: slotW, height: plotH, fill: "transparent" });
+    // a double click opens the week on the week tab
+    hit.addEventListener("dblclick", () => { week = x.ws; openTab("week"); });
+    hit.addEventListener("mouseenter", () => {
+      focus.off();                                  // a project still lit gives way to the week, unless it is pinned
+      for (const r of [pickBase, pickTone]) r.setAttribute("x", x0 + 1 - grow);
+      pickTone.setAttribute("fill-opacity", HEAT(x.g[1])); pick.setAttribute("visibility", "visible");
+      // the note sits beside the cell, right of it while there is room, and
+      // stays inside the strip so that it never covers a project name
+      const a = addDays(x.ws, 0), b = addDays(x.ws, 6);
+      // [added, closed] of the week: over all tasks, or in the pinned project
+      const own = focus.pinned && ((DATA.wk[x.ws].y || {})[focus.p.id] || [0, 0]);
+      const g = own || x.g;
+      const parts = [a.getDate() + " " + MON[a.getMonth()] + " – " + b.getDate() + " " + MON[b.getMonth()],
+                     (own ? "в проекте: " : "") + "сделано " + g[1], "новых " + g[0]];
+      noteText.textContent = parts.join(" · ");
+      const w = ctx.measureText(noteText.textContent).width * 12 / 11 + 20;
+      const right = x0 + slotW + grow + 6, nx = right + w > W - padR ? x0 - grow - 6 - w : right;
+      noteBox.setAttribute("x", nx); noteBox.setAttribute("width", w);
+      noteText.setAttribute("x", nx + 10);
+      note.setAttribute("visibility", "visible");
+    });
+    hit.addEventListener("mouseleave", () => {
+      pick.setAttribute("visibility", "hidden"); note.setAttribute("visibility", "hidden");
+    });
+    svg.appendChild(hit);
+  });
+  svg.appendChild(pick);
+  const note = el("g", { visibility: "hidden", "pointer-events": "none" });
+  const lift = 12;                                 // the note sits a little above the middle of the strip
+  const noteBox = el("rect", { y: padT + 1 - lift, height: plotH - 2, rx: 6, fill: css("--card"), stroke: css("--border"), "stroke-width": 1 });
+  const noteText = el("text", { y: padT + plotH / 2 + 4 - lift, "font-size": 12, "font-weight": 500, fill: css("--ink") });
+  note.appendChild(noteBox); note.appendChild(noteText);
+
+  // hovering a name fades everything that is not the project: the weeks outside
+  // its life, from the week of its start to the week it was closed in (today for
+  // an open one), and the names, dots and lines of the other projects
+  const FADE = 0.25;
+  const others = [];                              // every name, dot and line; the project's own come up on plates
+  const weekOf = iso => {
+    const i = slots.findIndex(q => q.ws === mondayOf(iso));
+    return i >= 0 ? i : iso < slots[0].ws ? -1 : slots.length;
+  };
+  // a note of the hovered project: small text on a patch of card colour, so the
+  // faded names behind it do not show through
+  const OPENED = p => "создано: " +human(addDays(p.from, 0));
+  // over a planned name: the day ahead, a return to a project with a completed task, else a start
+  const PLANNED = p => (p.first ? "возобновление: " : "старт: ") + human(addDays(p.at, 0));
+  const CLOSED = p => (p.st === 3 ? "закрыто: " : "отменено: ") + human(addDays(p.to, 0));
+  // over a name: the day of the task it stands at. When the project was created
+  // or closed in the same week, or has no completed task, that day is given instead.
+  const sameWeek = (a, b) => a && b && mondayOf(a) === mondayOf(b);
+  const FIRST = p => "первая задача: " + human(addDays(p.first, 0));
+  const LAST = p => "последняя задача: " + human(addDays(p.last, 0));
+  const START = p => !p.first || sameWeek(p.first, p.from) ? OPENED(p) : FIRST(p);
+  const END = p => !p.last || sameWeek(p.last, p.to) ? CLOSED(p) : LAST(p);
+  // dates are in italics, the length of the project in bold
+  function caption(text, x, y, anchor, bold) {
+    const g = el("g"), t = el("text", { x, y, "font-size": 10.5, "font-weight": bold ? 700 : 500,
+      "font-style": bold ? "normal" : "italic", "text-anchor": anchor, fill: css(bold ? "--ink" : "--ink-2") });
+    t.textContent = text;
+    g.appendChild(t); spot.appendChild(g);
+    let b = t.getBBox();
+    // a note that would run off the chart is pulled back inside
+    const dx = b.x + b.width > W - 4 ? W - 4 - b.x - b.width : b.x < 4 ? 4 - b.x : 0;
+    if (dx) { t.setAttribute("x", x + dx); b = t.getBBox(); }
+    g.insertBefore(el("rect", { x: b.x - 3, y: b.y - 1, width: b.width + 6, height: b.height + 2, rx: 3, fill: css("--card") }), t);
+    g.box = b;
+    return g;
+  }
+  const notes = [];
+  // which project is lit. Leaving a name does not put the lights back at once:
+  // on the way from one name to the next the chart would flash to full and fade
+  // again. The lights come back after a short pause, and a name entered within
+  // it takes over in one step.
+  // A click on a name pins its project: it stays lit whatever the pointer is
+  // over, until its name is clicked again, another name or the chart beside them.
+  const focus = {
+    p: null, pinned: false, timer: 0,
+    on(p) {
+      if (this.pinned) return;
+      clearTimeout(this.timer);
+      if (this.p === p) return;
+      this.off();
+      this.p = p; markProject(p, true); showSpan(p);
+    },
+    off() {
+      if (this.pinned) return;
+      clearTimeout(this.timer);
+      if (!this.p) return;
+      hideSpan(); markProject(this.p, false); this.p = null;
+    },
+    later() { clearTimeout(this.timer); this.timer = setTimeout(() => this.off(), 160); },
+    pin(p) {
+      const same = this.pinned && projKey(this.p) === projKey(p);
+      this.pinned = false;
+      if (same) return this.off();
+      this.on(p); this.pinned = true;
+    },
+    unpin() { this.pinned = false; this.off(); }
+  };
+  svg.addEventListener("click", () => focus.unpin());
+  function showSpan(p) {
+    const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
+    cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
+    for (const e of others) e.setAttribute("opacity", FADE);
+    if (p.lifeless) return;                       // nothing to measure
+
+    // just over the strip: an arrow at the edge the project runs past, with the
+    // date that lies beyond it, and the length of the project over its middle
+    const y = padT - 7, xl = padL, xr = W - padR;
+    // an end inside the year that is not where the name stands is a tick with its date
+    const ticks = showTicks(p, y);
+    const left = a < 0 ? caption("← " + OPENED(p), xl + 3, y, "start") : ticks.created;
+    const right = b >= slots.length ? caption((p.to ? CLOSED(p) : "в работе") + " →", xr - 3, y, "end") : ticks.closed;
+    const from = padL + Math.max(a, 0) * slotW, to = padL + (Math.min(b, slots.length - 1) + 1) * slotW;
+    const mid = caption(lifeSpan(p.from, p.to || DATA.today), (from + to) / 2, y, "middle", true);
+    // the middle note gives way to an arrow it would run into, and stays inside the plot
+    const w = mid.box.width, lo = left ? left.box.x + left.box.width + 10 : xl + 3, hi = right ? right.box.x - 10 : xr - 3;
+    const x0 = Math.min(Math.max(mid.box.x, lo), Math.max(lo, hi - w));
+    mid.setAttribute("transform", `translate(${x0 - mid.box.x},0)`);
+    notes.push(mid, left, right);
+  }
+  // ticks across the strip at the ends of the life of the lit project: the week
+  // it was created in and the week it was closed in, where the name stands in
+  // another week, at a task. Their dates are over the strip, outside the life,
+  // on both sides of its length; the dates of the tasks are with the names. An
+  // open project has no name for its end: its tick is the week of its last
+  // completed task, dated under the strip, so the time it has stood since then
+  // is seen.
+  function showTicks(p, y) {
+    // a tick runs past the strip to the side its date is on
+    const y2 = padT + plotH + 3;
+    const tick = (day, y1 = padT - 17) => {
+      const cx = Math.round(padL + weekOf(day) * slotW + slotW / 2) + .5, g = el("g");
+      g.appendChild(el("line", { x1: cx, y1, x2: cx, y2, stroke: css("--card"), "stroke-width": 2 }));
+      g.appendChild(el("line", { x1: cx, y1, x2: cx, y2, stroke: css("--ink"), "stroke-width": 0.75 }));
+      spot.appendChild(g); notes.push(g);
+      return cx;
+    };
+    // a date takes the first place where it runs into nothing lit: under its
+    // tick on the side it leans to, on the other side, then a row lower
+    const taken = [...spot.children].map(g => g.getBBox());
+    const hits = b => taken.some(t => b.x < t.x + t.width + 4 && b.x + b.width + 4 > t.x && b.y < t.y + t.height && b.y + b.height > t.y);
+    const date = (text, cx, lean) => {
+      let c = null;
+      for (const [side, row] of [[lean, 0], [-lean, 0], [lean, 1], [-lean, 1], [lean, 2]]) {
+        if (c) c.remove();
+        c = caption(text, cx + side * 4, y2 + 13 + row * 13, side < 0 ? "end" : "start");
+        if (!hits(c.box)) break;
+      }
+      taken.push(c.box); notes.push(c);
+    };
+    const created = p.first && !sameWeek(p.first, p.from) && inYear(p.from) ? caption(OPENED(p), tick(p.from) - 5, y, "end") : null;
+    const closed = p.to && p.last && !sameWeek(p.last, p.to) && inYear(p.to) ? caption(CLOSED(p), tick(p.to) + 5, y, "start") : null;
+    if (!p.to && p.last && !sameWeek(p.last, p.up) && inYear(p.last)) date(LAST(p), tick(p.last, padT - 3), 1);
+    return { created, closed };
+  }
+  function hideSpan() {
+    for (const e of cells.concat(others)) e.removeAttribute("opacity");
+    for (const n of notes.splice(0)) if (n) n.remove();
+  }
+  const spot = el("g", { "pointer-events": "none" });   // the plates of the hovered project, above all names
+  // byStart: the names stand for the start of the project, so the card leads with it
+  function drawNames(layout, yOf, lineFrom, lineTo, byStart) {
+    for (const wk of layout.weeks) {
+      // the line runs to the last name that is drawn; a week of unseen names has none
+      const seen = wk.labels.filter(l => !l.bare).map(l => l.r);
+      if (seen.length) {
+        const drop = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(Math.max(...seen)),
+          stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3" });
+        drops.appendChild(drop);
+        others.push(drop);
+      }
+      for (const l of wk.labels) {
+        const p = l.p;
+        // a project without a completed task is grey, as a planned one
+        const tone = css(p.planned || !p.first ? "--ink-3" : !p.to ? (p.someday ? "--op2" : "--op1") : p.st === 2 ? "--ink-3" : "--ink-2");
+        // a dot of the project's colour on the line of the week, level with the name
+        // a planned project is a hollow dot and a name in italics: it is not there yet
+        const dot = p.planned
+          ? el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 2.6, fill: css("--card"), stroke: tone, "stroke-width": 1.4 })
+          : el("circle", { cx: wk.cx, cy: yOf(l.r) - 4, r: 3, fill: tone, stroke: css("--card"), "stroke-width": 1.5 });
+        names.appendChild(dot);
+        const lb = el("text", Object.assign({ x: l.x + (l.anchor === "end" ? -2 : 2), y: yOf(l.r), "font-size": 11, "font-weight": 500,
+          "text-anchor": l.anchor, fill: tone }, halo));
+        if (p.planned) lb.setAttribute("font-style", "italic");
+        lb.textContent = l.text;
+        // a click pins the project, a double click opens it in Things
+        lb.style.cursor = "pointer"; lb.style.userSelect = "none";
+        lb.addEventListener("click", e => { e.stopPropagation(); if (e.detail < 2) focus.pin(p); });
+        lb.addEventListener("dblclick", () => { location.href = "things:///show?id=" + encodeURIComponent(p.id); });
+        // a hidden project is not drawn at all, neither its dot nor its name, and
+        // its place does not react to the pointer. Both come up on the plate when
+        // the project is lit.
+        if (l.bare) { lb.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); }
+        others.push(dot, lb);
+        // the name under the pointer turns bold with the line of its week, and
+        // so does the other name of the same project, if it is in this year
+        // ... and both are lifted onto a plate, over the names around them. The plate is
+        // a pale tint of the blue of the strip.
+        let plate = null;
+        const mark = on => {
+          lb.setAttribute("font-weight", on ? 700 : 500);
+          if (plate) { plate.remove(); plate = null; }
+          if (!on) return;
+          const b = lb.getBBox(), x1 = Math.min(b.x, wk.cx - 5) - 4, x2 = Math.max(b.x + b.width, wk.cx + 5) + 5;
+          plate = el("g");
+          // no taller than a row, so the plates of a week stack without covering each other
+          plate.appendChild(el("rect", { x: x1, y: b.y - 1, width: x2 - x1, height: b.height + 2, rx: 5,
+            fill: css("--pick") }));
+          // on the plate the dot and the halo of the text take its colour, not the card's
+          const d2 = dot.cloneNode(), t2 = lb.cloneNode(true);
+          if (p.planned) d2.setAttribute("fill", css("--pick")); else d2.setAttribute("stroke", css("--pick"));
+          t2.setAttribute("stroke", css("--pick"));
+          t2.removeAttribute("visibility"); d2.removeAttribute("visibility");
+          t2.removeAttribute("opacity"); d2.removeAttribute("opacity");
+          plate.appendChild(d2); plate.appendChild(t2);
+          spot.appendChild(plate);
+        };
+        // with the plate comes a date over the name: of the start where the
+        // project starts, of the closing where it was closed
+        let dated = null, lead = null;
+        (projMarks[projKey(p)] = projMarks[projKey(p)] || []).push(on => {
+          mark(on);
+          if (dated) { dated.remove(); dated = null; }
+          if (lead) { lead.remove(); lead = null; }
+          if (!on) return;
+          // the line is bold only from the strip to this project; the rest of it fades with the others
+          lead = el("line", { x1: wk.cx, y1: lineFrom(wk.x), x2: wk.cx, y2: lineTo(l.r),
+            stroke: css("--ink-3"), "stroke-width": 2, "stroke-dasharray": "2 3" });
+          drops.appendChild(lead);
+          const b = lb.getBBox();
+          dated = caption(!byStart ? END(p) : p.planned ? PLANNED(p) : START(p), l.anchor === "end" ? b.x + b.width : b.x, b.y - 5, l.anchor);
+        });
+        lb.addEventListener("mouseenter", () => focus.on(p));
+        lb.addEventListener("mouseleave", () => focus.later());
+        names.appendChild(lb);
+      }
+    }
+  }
+  const top = H + 6;
+  // a line ends in the middle of the dot of its last name, so nothing sticks out past the dot
+  drawNames(above, r => padT - 10 - gapT - r * rowH, () => padT - 2, r => padT - 14 - gapT - r * rowH, true);
+  drawNames(below, r => top + r * rowH + 11, () => padT + plotH + 2, r => top + r * rowH + 7);
+  // the totals count a project in the year it was created in and in the year it
+  // was closed in, wherever its names stand
+  const ended = Object.values(PROJ).filter(p => p.down && inYear(p.to) && lasted(p));
+  const done = ended.filter(p => p.st === 3).length, dropped = ended.length - done;
+  const opened = Object.values(PROJ).filter(p => inYear(p.from) && lasted(p)).length;
+  svg.appendChild(names);
+  svg.appendChild(spot);
+  svg.appendChild(note);                          // over the ticks and the dates of a pinned project
+  const H2 = below.rows ? top + below.rows * rowH + 4 : H;
+  svg.setAttribute("height", H2); svg.setAttribute("viewBox", `0 0 ${W} ${H2}`);
+  node.innerHTML = ""; node.appendChild(svg);
+
+  // the totals of the year in one line: tasks, then projects, each as added,
+  // closed (completed) and canceled
+  const leg = document.createElement("div");
+  leg.className = "legend";
+  const tasksDone = slots.reduce((n, x) => n + (x.g ? DATA.wk[x.ws].c[0] : 0), 0);      // .c is [completed, canceled]
+  const tasksDropped = slots.reduce((n, x) => n + (x.g ? DATA.wk[x.ws].c[1] : 0), 0);
+  // each of the two groups sits on its own pale fill
+  for (const group of [[["Задач добавлено", added], ["закрыто", tasksDone], ["отменено", tasksDropped]],
+                       [["Проектов добавлено", opened], ["закрыто", done], ["отменено", dropped]]]) {
+    const box = document.createElement("div");
+    box.className = "group";
+    for (const [name, v] of group) {
+      const it = document.createElement("span"), b = document.createElement("b");
+      it.appendChild(document.createTextNode(name + ": "));
+      b.textContent = v; it.appendChild(b);
+      box.appendChild(it);
+    }
+    leg.appendChild(box);
+  }
+  node.appendChild(leg);
+}
+
+// ---- tabs -------------------------------------------------------------------
+// the tab lives in the address (#year), so it survives the reload after a refresh
+let tab = location.hash === "#year" ? "year" : "week";
+const render = () => tab === "year" ? drawYear() : draw();
+function showTab() {
+  document.getElementById("tab-week").hidden = tab !== "week";
+  document.getElementById("tab-year").hidden = tab !== "year";
+  document.getElementById("title").textContent = tab === "year" ? "Год по неделям" : "Неделя по проектам";
+  for (const b of document.querySelectorAll(".tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
+  render();
+}
+function openTab(name) {
+  tab = name;
+  history.replaceState(null, "", tab === "year" ? "#year" : location.pathname + location.search);
+  showTab();
+  scrollTo(0, 0);
+}
+for (const b of document.querySelectorAll(".tabs button")) b.onclick = () => openTab(b.dataset.tab);
+
 wsel.innerHTML = DATA.weeks.slice().reverse().map(w => `<option value="${w}">${wlabel(w)}</option>`).join("");
 document.getElementById("prev").onclick = () => {
   const i = DATA.weeks.indexOf(week); if (i > 0) { week = DATA.weeks[i - 1]; draw(); }
@@ -626,10 +1158,17 @@ document.getElementById("next").onclick = () => {
 };
 wsel.onchange = () => { week = wsel.value; draw(); };
 document.getElementById("today").onclick = () => { week = DATA.current; draw(); };
-addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTimeout(draw, 150); });
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+const ysel = document.getElementById("ysel");
+ysel.innerHTML = YEARS.slice().reverse().map(y => `<option value="${y}">${y}</option>`).join("");
+document.getElementById("yprev").onclick = () => { year = YEARS[YEARS.indexOf(year) - 1]; drawYear(); };
+document.getElementById("ynext").onclick = () => { year = YEARS[YEARS.indexOf(year) + 1]; drawYear(); };
+ysel.onchange = () => { year = +ysel.value; drawYear(); };
+document.getElementById("yall").onchange = ev => { showAll = ev.target.checked; drawYear(); };
+document.getElementById("ytoday").onclick = () => { year = yearOf(DATA.current); drawYear(); };
+addEventListener("resize", () => { clearTimeout(window._rt); window._rt = setTimeout(render, 150); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 
-draw();
+showTab();
 
 // The button exists only when the page is served by serve.py: a file:// page
 // has no way to run anything on the machine.

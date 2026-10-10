@@ -42,6 +42,7 @@ erDiagram
         TEXT first_seen
         TEXT last_seen
         TEXT deleted_at
+        INTEGER repeating
     }
     meta {
         TEXT key PK
@@ -111,7 +112,8 @@ CREATE TABLE project (
   status       INTEGER NOT NULL,  -- 0 open, 2 canceled, 3 completed (last known)
   first_seen   TEXT NOT NULL,
   last_seen    TEXT NOT NULL,
-  deleted_at   TEXT
+  deleted_at   TEXT,
+  repeating    INTEGER NOT NULL DEFAULT 0  -- 1 if it was ever seen as a copy of a repeating project
 );
 
 -- Service values; 'export_todos' is the number of to-dos in the last accepted
@@ -252,5 +254,5 @@ The result must not depend on the number of runs.
    - if it is, do nothing.
 
    The write is a plain `INSERT`, without `OR REPLACE`: a second attempt to write a frozen week caused by a bug in the code hits the primary key and fails.
-3. The reference tables (`area`, `project`) are updated by an upsert (`INSERT ... ON CONFLICT DO UPDATE`): `title`, `status`, `last_seen` are overwritten with the same values, `first_seen` is left alone, the areas follow the "Last known area" rule. `deleted_at` is set only if the record is missing from the export and the field is empty, and is cleared if the record shows up again.
+3. The reference tables (`area`, `project`) are updated by an upsert (`INSERT ... ON CONFLICT DO UPDATE`): `title`, `status`, `last_seen` are overwritten with the same values, `first_seen` is left alone, the areas follow the "Last known area" rule, `repeating` is only ever raised from 0 to 1. `deleted_at` is set only if the record is missing from the export and the field is empty, and is cleared if the record shows up again.
 4. The export is checked before anything is written to the database: it has tasks, and their number is not less than half of the previous accepted export (`meta.export_todos`). Otherwise the refresh stops without writing. Without this check a failed export on the day of a freeze would write a week of zeros for good and mark all areas and projects as deleted.
