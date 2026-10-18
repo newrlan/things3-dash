@@ -5,10 +5,13 @@ A page opened as a file:// document cannot run anything on the machine.
 Served over http from here, the "Обновить данные" button can POST /refresh,
 and this process runs refresh.sh on its behalf.
 
-    python3 serve.py            # then open http://127.0.0.1:8765/week.html
+    python3 serve.py            # then open http://127.0.0.1:8765/things-dash.html
 
 Binds to the loopback interface only: nothing outside this machine can reach it.
 The only command it will ever run is refresh.sh sitting next to this file.
+Requests addressed to another host name are refused, which stops other web pages
+from reading the files through DNS rebinding, and POST /refresh is accepted only
+from the page served here, so another site open in the browser cannot trigger it.
 """
 
 import http.server
@@ -20,15 +23,36 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "refresh.sh")
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+ORIGINS = {f"http://{h}" for h in HOSTS}
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=HERE, **kw)
 
+    def own_host(self):
+        if self.headers.get("Host") in HOSTS:
+            return True
+        self.send_error(403)
+        return False
+
+    def do_GET(self):
+        if self.own_host():
+            super().do_GET()
+
+    def do_HEAD(self):
+        if self.own_host():
+            super().do_HEAD()
+
     def do_POST(self):
+        if not self.own_host():
+            return
         if self.path != "/refresh":
             self.send_error(404)
+            return
+        if self.headers.get("Origin") not in ORIGINS:
+            self.send_error(403)
             return
         print("-- запуск refresh.sh", flush=True)
         try:
@@ -58,7 +82,7 @@ if not os.access(SCRIPT, os.X_OK):
     sys.exit(f"refresh.sh не найден или не исполняемый: {SCRIPT}")
 
 with http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler) as httpd:
-    print(f"открывайте http://127.0.0.1:{PORT}/week.html", flush=True)
+    print(f"открывайте http://127.0.0.1:{PORT}/things-dash.html", flush=True)
     print("остановить: Ctrl+C", flush=True)
     try:
         httpd.serve_forever()

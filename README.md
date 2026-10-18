@@ -98,12 +98,12 @@ No dependencies to install.
 
 ```sh
 ./refresh.sh
-open week.html
+open things-dash.html
 ```
 
 `refresh.sh` runs `build_week.py`, which reads the Things database, updates
-`history.sqlite`, freezes the weeks that have ended and builds `week.html` from
-`week.template.html`. It refuses a read with no to-dos, or with less than half
+`history.sqlite`, freezes the weeks that have ended and builds `things-dash.html` from
+`things-dash.template.html`. It refuses a read with no to-dos, or with less than half
 of the to-dos of the previous one, so that a failed read never gets frozen into
 the history.
 
@@ -116,10 +116,27 @@ python3 serve.py          # default port 8765
 python3 serve.py 9000     # another port
 ```
 
-Open http://127.0.0.1:8765/week.html. Served over http, the page shows the
+Open http://127.0.0.1:8765/things-dash.html. Served over http, the page shows the
 refresh data button: it asks `serve.py` to run
 `refresh.sh` and reloads the page when done. The button is hidden when the page
 is opened as a local file.
+
+### Run in the background
+
+```sh
+./install.sh              # default port 8765
+./install.sh 9000         # another port
+```
+
+`install.sh` installs `serve.py` as a launchd agent of the current user: the
+server starts at login and is restarted if it stops, with no terminal kept
+open. It also builds the **Things Dash** app in `~/Applications`, which starts
+the agent if it is not running and opens the page in the browser. The output of
+the server goes to `~/Library/Logs/things3-dash.log`.
+
+Run `install.sh` again after moving the project folder or to change the port.
+`./uninstall.sh` stops the agent and removes its plist and the app; the log and
+the data stay.
 
 ## How the data is read
 
@@ -130,16 +147,17 @@ is opened as a local file.
 - It is opened read-only (`mode=ro`). Nothing is copied or written into the
   Things container, and no intermediate files are kept.
 - If macOS refuses access to the database, allow your terminal app access in
-  System Settings > Privacy & Security.
+  System Settings > Privacy & Security. Run by the launchd agent, the build
+  reads the database as `python3` itself, which may need the access too.
 
 ## Privacy
 
 - To-do titles are not read. Only project, heading and area titles leave
   the database; project and area titles are stored in `history.sqlite` and
-  embedded in `week.html`.
+  embedded in `things-dash.html`.
 - `history.sqlite` keeps the identifiers (not the titles) of the to-dos touched
   in the running week; they are removed when the week is frozen.
-- `week.html` and `history.sqlite` hold your personal data and are listed in
+- `things-dash.html` and `history.sqlite` hold your personal data and are listed in
   `.gitignore`. Do not publish them.
 - `history.sqlite` is the only copy of past weeks once Things has forgotten
   them: keep it in your backups.
@@ -167,19 +185,22 @@ is opened as a local file.
   update that changes the schema can break it; `build_week.py` then stops with
   the SQLite error naming the missing table or column, before anything is
   written.
-- `serve.py` listens on `127.0.0.1` only, but `POST /refresh` has no protection
-  against requests sent by other web pages open in the same browser, and the
-  server gives out every file in the project directory, including
-  `history.sqlite`. Run it only while you need it.
+- `serve.py` listens on `127.0.0.1` only and gives out every file in the
+  project directory, including `history.sqlite`, to any program on this
+  machine. It answers only requests addressed to `127.0.0.1` or `localhost` on
+  its port, and accepts `POST /refresh` only from its own page, so other web
+  pages open in the browser can neither read the files nor trigger a refresh.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `build_week.py` | Reads the Things database, updates the history and builds `week.html` from it and the template |
-| `week.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
+| `build_week.py` | Reads the Things database, updates the history and builds `things-dash.html` from it and the template |
+| `things-dash.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
 | `refresh.sh` | Runs the build |
 | `serve.py` | Local http server with the refresh endpoint |
+| `install.sh` | Installs `serve.py` as a launchd agent and builds the Things Dash app |
+| `uninstall.sh` | Removes the agent and the app |
 | `docs/history-schema.md` | Schema and rules of `history.sqlite` |
 
 ## License

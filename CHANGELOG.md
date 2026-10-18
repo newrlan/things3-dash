@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `install.sh` runs `serve.py` in the background as a launchd agent that starts
+  at login, and builds the Things Dash app that opens the page; `uninstall.sh`
+  removes both.
+
+### Changed
+
+- The page is renamed from `week.html` to `things-dash.html`, its template from
+  `week.template.html` to `things-dash.template.html`.
+
+### Security
+
+- `serve.py` refuses requests addressed to another host name and accepts
+  `POST /refresh` only from its own page.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

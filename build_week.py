@@ -1,4 +1,4 @@
-"""Builds week.html from the Things database and keeps the weekly history.
+"""Builds things-dash.html from the Things database and keeps the weekly history.
 
 Steps:
   1. read the Things database (read-only) and refuse an export that looks broken;
@@ -7,7 +7,7 @@ Steps:
   3. remember the to-dos touched in the weeks not frozen yet (table touch);
   4. freeze every complete week that is not frozen yet;
   5. take the frozen weeks from the history, compute the running week live with
-     the same code, and embed it all into week.html.
+     the same code, and embed it all into things-dash.html.
 
 The schema and its rules are described in docs/history-schema.md.
 """
@@ -554,15 +554,15 @@ def main():
     con.close()
 
     blob = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-    with open(os.path.join(SRC, "week.template.html"), encoding="utf-8") as f:
+    with open(os.path.join(SRC, "things-dash.template.html"), encoding="utf-8") as f:
         tpl = f.read()
     assert "/*__DATA__*/" in tpl, "template lost its data placeholder"
-    out = os.path.join(SRC, "week.html")
+    out = os.path.join(SRC, "things-dash.html")
     with open(out + ".tmp", "w", encoding="utf-8") as f:
         f.write(tpl.replace("/*__DATA__*/", blob))
     os.replace(out + ".tmp", out)                   # the server never sees a half-written page
 
-    print("написан week.html")
+    print("написан things-dash.html")
     print("задач в базе Things:", len(todos), "| проектов:", len(projects), "| областей:", len(areas))
     print("недель в истории:", payload["frozen"], "| заморожено сейчас:", n,
           "| текущая неделя:", payload["current"])
