@@ -128,15 +128,21 @@ is opened as a local file.
 ./install.sh 9000         # another port
 ```
 
-`install.sh` installs `serve.py` as a launchd agent of the current user: the
-server starts at login and is restarted if it stops, with no terminal kept
-open. It also builds the **Things Dash** app in `~/Applications`, which starts
-the agent if it is not running and opens the page in the browser. The output of
-the server goes to `~/Library/Logs/things3-dash.log`.
+`install.sh` builds the **Things Dash** app in `~/Applications`. A click on it
+starts `serve.py` in the background, if it is not running yet, and opens the
+page in the browser; no terminal is kept open. The server keeps running after
+the app quits, until logout or `./uninstall.sh`. Its output goes to
+`~/Library/Logs/things3-dash.log`. If `things-dash.html` is not built yet,
+`install.sh` builds it first.
 
-Run `install.sh` again after moving the project folder or to change the port.
-`./uninstall.sh` stops the agent and removes its plist and the app; the log and
-the data stay.
+The server is started by the app rather than by launchd: macOS then asks for
+access to the Things database on behalf of Things Dash. A launchd agent gets
+no such prompt and is refused. To start the server at login, add Things Dash
+to System Settings > General > Login Items; it opens the page then as well.
+
+Run `install.sh` again after moving the project folder or to change the port;
+macOS may then ask for the access again. `./uninstall.sh` stops the server and
+removes the app; the log and the data stay.
 
 ## How the data is read
 
@@ -147,8 +153,8 @@ the data stay.
 - It is opened read-only (`mode=ro`). Nothing is copied or written into the
   Things container, and no intermediate files are kept.
 - If macOS refuses access to the database, allow your terminal app access in
-  System Settings > Privacy & Security. Run by the launchd agent, the build
-  reads the database as `python3` itself, which may need the access too.
+  System Settings > Privacy & Security. When the server is started by the
+  Things Dash app, the access is asked for and granted to Things Dash.
 
 ## Privacy
 
@@ -199,8 +205,8 @@ the data stay.
 | `things-dash.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
 | `refresh.sh` | Runs the build |
 | `serve.py` | Local http server with the refresh endpoint |
-| `install.sh` | Installs `serve.py` as a launchd agent and builds the Things Dash app |
-| `uninstall.sh` | Removes the agent and the app |
+| `install.sh` | Builds the Things Dash app that starts `serve.py` and opens the page |
+| `uninstall.sh` | Stops the server and removes the app |
 | `docs/history-schema.md` | Schema and rules of `history.sqlite` |
 
 ## License

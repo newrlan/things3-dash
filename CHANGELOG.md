@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `install.sh` runs `serve.py` in the background as a launchd agent that starts
-  at login, and builds the Things Dash app that opens the page; `uninstall.sh`
-  removes both.
+- `install.sh` builds the Things Dash app: a click starts `serve.py` in the
+  background, if it is not running yet, and opens the page; `uninstall.sh`
+  stops the server and removes the app.
 
 ### Changed
 
