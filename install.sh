@@ -43,19 +43,33 @@ if [ ! -f "$HERE/things-dash.html" ]; then
 fi
 
 # the app runs with a bare PATH, refresh.sh needs the same python3;
-# the server is detached from the app, so that the app quits at once
+# the app stays open while the server it started runs, and stops it on quit
 mkdir -p "$(dirname "$APP")" "$(dirname "$LOG")"
 rm -rf "$APP"
-osacompile -o "$APP" <<EOF
-set probeCmd to "curl -s -o /dev/null http://127.0.0.1:$PORT/"
-set waitCmd to "for i in \$(seq 50); do " & probeCmd & " && break; sleep 0.1; done; true"
-try
-	do shell script probeCmd
-on error
-	do shell script "cd '$HERE' && PATH='$(dirname "$PY")':/usr/bin:/bin:/usr/sbin:/sbin nohup '$PY' '$HERE/serve.py' $PORT >>'$LOG' 2>&1 </dev/null &"
-	do shell script waitCmd
-end try
-open location "$URL"
+osacompile -s -o "$APP" <<EOF
+global serverPid
+
+on run
+	set serverPid to ""
+	set probeCmd to "curl -s -o /dev/null http://127.0.0.1:$PORT/"
+	set waitCmd to "for i in \$(seq 50); do " & probeCmd & " && break; sleep 0.1; done; true"
+	try
+		do shell script probeCmd
+	on error
+		set serverPid to do shell script "cd '$HERE' && PATH='$(dirname "$PY")':/usr/bin:/bin:/usr/sbin:/sbin nohup '$PY' '$HERE/serve.py' $PORT >>'$LOG' 2>&1 </dev/null & echo \$!"
+		do shell script waitCmd
+	end try
+	open location "$URL"
+end run
+
+on reopen
+	open location "$URL"
+end reopen
+
+on quit
+	if serverPid is not "" then do shell script "kill " & serverPid & " 2>/dev/null; true"
+	continue quit
+end quit
 EOF
 
 echo "приложение: $APP"
