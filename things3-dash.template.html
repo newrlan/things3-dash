@@ -356,18 +356,28 @@ function drawDays() {
       lb.textContent = cur[d]; svg.appendChild(lb);
     }
 
+    // number of closures of the cell under the cursor; the cell of this week
+    // already carries its label
+    const lv = el("text", { x: X(d) + 6 + sw / 2, "text-anchor": "middle", "font-size": 10,
+      "font-weight": 600, fill: "#fff", "pointer-events": "none", visibility: "hidden" });
+    svg.appendChild(lv);
+
     const hit = el("rect", { x: X(d), y: padT, width: colW, height: ih, fill: "transparent" });
     hit.addEventListener("mousemove", ev => {
       const b = svg.getBoundingClientRect();
       const yy = (ev.clientY - b.top) * (H / b.height);
       const k = Math.max(0, Math.min(CAP + 1, Math.floor((padT + ih - yy) / cellH)));
-      showTip(ev, ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"][d] +
-        ", " + (k > CAP ? (CAP + 1) + " и больше" : k + " закрытий"), [
+      lv.textContent = k > CAP ? (CAP + 1) + "+" : k;
+      lv.setAttribute("y", Y(k) + cellH / 2 + 3.5);
+      lv.setAttribute("visibility", k === hereK ? "hidden" : "visible");
+      showTip(ev, ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"][d], [
         { k: "Мода по модели", v: st.mode },
-        { k: "Эта неделя", v: cur[d] === undefined ? "-" : cur[d], b: true }
+        // the top cell is already a tail total, nothing above it is known
+        ...(k > CAP ? [] : [{ k: "Вероятность закрыть больше " + k,
+          v: (st.p.slice(k + 1).reduce((a, q) => a + q, 0) * 100).toFixed(1) + "%" }])
       ]);
     });
-    hit.addEventListener("mouseleave", hideTip);
+    hit.addEventListener("mouseleave", () => { lv.setAttribute("visibility", "hidden"); hideTip(); });
     svg.appendChild(hit);
   });
 
