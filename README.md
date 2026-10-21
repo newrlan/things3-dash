@@ -98,14 +98,14 @@ No dependencies to install.
 
 ```sh
 ./refresh.sh
-open week.html
+open things3-dash.html
 ```
 
 `refresh.sh` runs `build_week.py`, which reads the Things database, updates
-`history.sqlite`, freezes the weeks that have ended and builds `week.html` from
-`week.template.html`. It refuses a read with no to-dos, or with less than half
-of the to-dos of the previous one, so that a failed read never gets frozen into
-the history.
+`history.sqlite`, freezes the weeks that have ended and builds
+`things3-dash.html` from `things3-dash.template.html`. It refuses a read with no
+to-dos, or with less than half of the to-dos of the previous one, so that a
+failed read never gets frozen into the history.
 
 To see fresh data, run `./refresh.sh` again and reload the page.
 
@@ -116,7 +116,7 @@ python3 serve.py          # default port 8765
 python3 serve.py 9000     # another port
 ```
 
-Open http://127.0.0.1:8765/week.html. Served over http, the page shows the
+Open http://127.0.0.1:8765/things3-dash.html. Served over http, the page shows the
 refresh data button: it asks `serve.py` to run
 `refresh.sh` and reloads the page when done. The button is hidden when the page
 is opened as a local file.
@@ -136,11 +136,11 @@ is opened as a local file.
 
 - To-do titles are not read. Only project, heading and area titles leave
   the database; project and area titles are stored in `history.sqlite` and
-  embedded in `week.html`.
+  embedded in `things3-dash.html`.
 - `history.sqlite` keeps the identifiers (not the titles) of the to-dos touched
   in the running week; they are removed when the week is frozen.
-- `week.html` and `history.sqlite` hold your personal data and are listed in
-  `.gitignore`. Do not publish them.
+- `things3-dash.html` and `history.sqlite` hold your personal data and are
+  listed in `.gitignore`. Do not publish them.
 - `history.sqlite` is the only copy of past weeks once Things has forgotten
   them: keep it in your backups.
 
@@ -176,8 +176,8 @@ is opened as a local file.
 
 | File | Purpose |
 |---|---|
-| `build_week.py` | Reads the Things database, updates the history and builds `week.html` from it and the template |
-| `week.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
+| `build_week.py` | Reads the Things database, updates the history and builds `things3-dash.html` from it and the template |
+| `things3-dash.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
 | `refresh.sh` | Runs the build |
 | `serve.py` | Local http server with the refresh endpoint |
 | `docs/history-schema.md` | Schema and rules of `history.sqlite` |

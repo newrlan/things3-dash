@@ -305,15 +305,13 @@ function drawDays() {
     const v = weeks.map(w => w[d]);
     const m = v.reduce((a, x) => a + x, 0) / v.length;
     const va = v.reduce((a, x) => a + (x - m) ** 2, 0) / (v.length - 1);
-    const hist = new Array(CAP + 2).fill(0);
-    for (const x of v) hist[Math.min(x, CAP + 1)]++;
     const p = [];
     let acc = 0;
     for (let k = 0; k <= CAP; k++) { const q = negbin(m, va, k); acc += q; p.push(q); }
     p.push(Math.max(0, 1 - acc));
     // most likely single count; the last cell is a tail total, not a value
     const body = p.slice(0, CAP + 1);
-    return { m, va, hist, p, pmax: Math.max(...p), mode: body.indexOf(Math.max(...body)) };
+    return { m, va, p, pmax: Math.max(...p), mode: body.indexOf(Math.max(...body)) };
   });
 
   const W = Math.max(300, node.clientWidth || 900);
@@ -365,8 +363,6 @@ function drawDays() {
       const k = Math.max(0, Math.min(CAP + 1, Math.floor((padT + ih - yy) / cellH)));
       showTip(ev, ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"][d] +
         ", " + (k > CAP ? (CAP + 1) + " и больше" : k + " закрытий"), [
-        { c: css("--cl1"), k: "Вероятность по модели", v: (st.p[k] * 100).toFixed(1) + "%" },
-        { k: "Недель было столько", v: st.hist[k] },
         { k: "Мода по модели", v: st.mode },
         { k: "Эта неделя", v: cur[d] === undefined ? "-" : cur[d], b: true }
       ]);

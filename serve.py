@@ -5,7 +5,7 @@ A page opened as a file:// document cannot run anything on the machine.
 Served over http from here, the "Обновить данные" button can POST /refresh,
 and this process runs refresh.sh on its behalf.
 
-    python3 serve.py            # then open http://127.0.0.1:8765/week.html
+    python3 serve.py            # then open http://127.0.0.1:8765/things3-dash.html
 
 Binds to the loopback interface only: nothing outside this machine can reach it.
 The only command it will ever run is refresh.sh sitting next to this file.
@@ -58,7 +58,7 @@ if not os.access(SCRIPT, os.X_OK):
     sys.exit(f"refresh.sh не найден или не исполняемый: {SCRIPT}")
 
 with http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler) as httpd:
-    print(f"открывайте http://127.0.0.1:{PORT}/week.html", flush=True)
+    print(f"открывайте http://127.0.0.1:{PORT}/things3-dash.html", flush=True)
     print("остановить: Ctrl+C", flush=True)
     try:
         httpd.serve_forever()

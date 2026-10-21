@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The page is `things3-dash.html` instead of `week.html`, built from
+  `things3-dash.template.html`: it holds the year tab too, not only the week.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added
