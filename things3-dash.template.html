@@ -96,6 +96,8 @@
   .legend b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
   .legend .group { display:flex; flex-wrap:wrap; gap:4px 18px; padding:3px 10px; border-radius:4px;
                    background:var(--fill); }
+  .score { margin-left:auto; font-size:12px; color:var(--ink-2); cursor:default; }
+  .score b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
   .empty { color:var(--ink-3); font-size:13px; padding:20px 2px; }
 </style>
 </head>
@@ -123,7 +125,7 @@
 
 <div class="pair">
 <div class="card">
-  <div class="bhd"><h2>Распределение закрытий по дням недели</h2></div>
+  <div class="bhd"><h2>Распределение закрытий по дням недели</h2><span class="score" id="dayscore"></span></div>
   <div class="chart" id="days"></div>
 </div>
 
@@ -295,6 +297,8 @@ function drawDays() {
     if (v.length === 7) weeks.push(v);
   }
   const cur = weekCloses(week);
+  const score = document.getElementById("dayscore");
+  score.innerHTML = ""; score.onmousemove = score.onmouseleave = null;
   if (weeks.length < 5) {
     node.innerHTML = '<div class="empty">Недостаточно завершённых недель.</div>';
     return;
@@ -380,6 +384,30 @@ function drawDays() {
     hit.addEventListener("mouseleave", () => { lv.setAttribute("visibility", "hidden"); hideTip(); });
     svg.appendChild(hit);
   });
+
+  // how the week goes against the model: geometric mean over the finished days
+  // of the mid-percentile P(X < x) + P(X = x) / 2; today is left out until it ends
+  const done = idxOf(week) + cur.length - 1 === idxOf(DATA.today) ? cur.length - 1 : cur.length;
+  const qs = [];
+  for (let d = 0; d < done; d++) {
+    const { m, va } = stats[d];
+    let below = 0;
+    for (let j = 0; j < cur[d]; j++) below += negbin(m, va, j);
+    qs.push(below + negbin(m, va, cur[d]) / 2);
+  }
+  if (done) {
+    const g = Math.exp(qs.reduce((a, q) => a + Math.log(q), 0) / done);
+    score.innerHTML = `Неделя относительно модели <b>${g.toFixed(2)}</b>`;
+    const full = ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"];
+    score.onmousemove = ev => showTip(ev, "Процентиль дня по модели", [
+      ...qs.map((q, d) => ({ k: full[d] + ", " + cur[d] + " закр.", v: q.toFixed(2) })),
+      { k: "Геометрическое среднее", v: g.toFixed(2), b: true, top: true },
+      ...(done < cur.length ? [{ k: "Сегодня не учитывается, день не закончен", v: "" }] : [])
+    ]);
+    score.onmouseleave = hideTip;
+  } else {
+    score.textContent = "Оценка появится после первого завершённого дня";
+  }
 
   node.innerHTML = ""; node.appendChild(svg);
 }
