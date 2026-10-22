@@ -385,24 +385,33 @@ function drawDays() {
     svg.appendChild(hit);
   });
 
-  // how the week goes against the model: geometric mean over the finished days
-  // of the mid-percentile P(X < x) + P(X = x) / 2; today is left out until it ends
+  // efficiency of the week: average over the finished days of P(X <= x), the
+  // share of typical days that closed no more than this one; today is left out
+  // until it ends. The norm is its expectation under the model: for two
+  // independent typical days P(X' <= X) = (1 + sum p_k^2) / 2.
   const done = idxOf(week) + cur.length - 1 === idxOf(DATA.today) ? cur.length - 1 : cur.length;
-  const qs = [];
+  const full = ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"];
+  const tips = [];
+  let sum = 0, normSum = 0;
   for (let d = 0; d < done; d++) {
     const { m, va } = stats[d];
-    let below = 0;
-    for (let j = 0; j < cur[d]; j++) below += negbin(m, va, j);
-    qs.push(below + negbin(m, va, cur[d]) / 2);
+    let acc = 0, le = 0, sq = 0;
+    for (let k = 0; acc < 1 - 1e-12 || k <= cur[d]; k++) {
+      const q = negbin(m, va, k);
+      acc += q; sq += q * q;
+      if (k === cur[d]) le = acc;
+    }
+    tips.push({ k: full[d] + ", " + cur[d] + " закр.", v: le.toFixed(2) });
+    sum += le; normSum += (1 + sq) / 2;
   }
   if (done) {
-    const g = Math.exp(qs.reduce((a, q) => a + Math.log(q), 0) / done);
-    score.innerHTML = `Неделя относительно модели <b>${g.toFixed(2)}</b>`;
-    const full = ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"];
-    score.onmousemove = ev => showTip(ev, "Процентиль дня по модели", [
-      ...qs.map((q, d) => ({ k: full[d] + ", " + cur[d] + " закр.", v: q.toFixed(2) })),
-      { k: "Геометрическое среднее", v: g.toFixed(2), b: true, top: true },
-      ...(done < cur.length ? [{ k: "Сегодня не учитывается, день не закончен", v: "" }] : [])
+    const e = sum / done, norm = normSum / done;
+    score.innerHTML = `Эффективность недели <b>${e.toFixed(2)}</b>`;
+    score.onmousemove = ev => showTip(ev, "Доля типичных дней, закрывших не больше", [
+      ...tips,
+      { k: "Эффективность недели", v: e.toFixed(2), b: true, top: true },
+      { k: "Норма по модели", v: norm.toFixed(2) },
+      ...(done < cur.length ? [{ k: "Сегодня не учитывается, день не закончен", v: "", top: true }] : [])
     ]);
     score.onmouseleave = hideTip;
   } else {
