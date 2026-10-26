@@ -230,9 +230,9 @@ function niceTicks(max, count) {
 }
 // the three parts of a week's flow, in the order of DATA.wk[week].f
 const FLOW = [
-  { color: () => css("--op2"), name: "Новые не закрытые задачи" },
-  { color: () => css("--cl2"), name: "Новые закрытые задачи" },
-  { color: () => css("--cl1"), name: "Старые закрытые задачи" }
+  { color: () => css("--op2"), name: "Открытые", ink: "#0b0b0b" },
+  { color: () => css("--cl2"), name: "Новые закрытые", ink: "#0b0b0b" },
+  { color: () => css("--cl1"), name: "Старые закрытые", ink: "#ffffff" }
 ];
 let week = DATA.current;
 
@@ -555,11 +555,19 @@ function drawAreas() {
 }
 
 
+// a horizontal curly brace from x1 to x2 along y, its tip h away in dir (-1 up, 1 down)
+function brace(x1, x2, y, h, dir) {
+  const m = (x1 + x2) / 2, q = Math.min(h / 2, (x2 - x1) / 4), yq = y + dir * q, yt = y + dir * h;
+  return `M${x1},${y} Q${x1},${yq} ${x1 + q},${yq} L${m - q},${yq} Q${m},${yq} ${m},${yt}`
+    + ` Q${m},${yq} ${m + q},${yq} L${x2 - q},${yq} Q${x2},${yq} ${x2},${y}`;
+}
+
 // one stacked bar for the shown week: what was added and is still open, what
-// was added and already done, and what was done from earlier weeks
+// was added and already done, and what was done from earlier weeks; a brace
+// above sums the added (the first two parts), one below sums the done (the last two)
 function drawFlow() {
   const node = document.getElementById("flow");
-  const segs = FLOW.map((g, i) => ({ n: DATA.wk[week].f[i], color: g.color(), name: g.name }));
+  const segs = FLOW.map((g, i) => ({ n: DATA.wk[week].f[i], color: g.color(), name: g.name, ink: g.ink }));
   const sum = segs.reduce((a, g) => a + g.n, 0);
   if (!sum) {
     node.innerHTML = '<div class="empty">На этой неделе ничего не добавлено и не сделано.</div>';
@@ -567,8 +575,9 @@ function drawFlow() {
   }
 
   const W = Math.max(260, node.clientWidth || 900);
-  const barH = 22;
-  const svg = el("svg", { width: W, height: barH, viewBox: `0 0 ${W} ${barH}` });
+  const barH = 26, bh = 9, labH = 18, gap = 4;
+  const barY = labH + bh + gap, H = barY + barH + gap + bh + labH;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
   node.innerHTML = ""; node.appendChild(svg);
 
   // segments share the width by count; a 2px gap of card colour between them
@@ -577,12 +586,23 @@ function drawFlow() {
   let x = 0;
   shown.forEach((g, k) => {
     const w = g.n * unit;
+    g.x = x; g.w = w;
     const first = k === 0, last = k === shown.length - 1, r = 4;
-    const d = first && last ? barL(x, 0, w / 2, barH, r) + barR(x + w / 2, 0, w / 2, barH, r)
-      : first ? barL(x, 0, w, barH, r) : last ? barR(x, 0, w, barH, r)
-      : `M${x},0 h${w} v${barH} h${-w} Z`;
+    const d = first && last ? barL(x, barY, w / 2, barH, r) + barR(x + w / 2, barY, w / 2, barH, r)
+      : first ? barL(x, barY, w, barH, r) : last ? barR(x, barY, w, barH, r)
+      : `M${x},${barY} h${w} v${barH} h${-w} Z`;
     svg.appendChild(el("path", { d, fill: g.color }));
-    const hit = el("rect", { x, y: 0, width: w, height: barH, fill: "transparent" });
+
+    // the name and count inside the segment; only the count if the name does not fit
+    const t = el("text", { x: x + w / 2, y: barY + barH / 2 + 4, "text-anchor": "middle",
+      "font-size": 12, fill: g.ink, "pointer-events": "none" });
+    svg.appendChild(t);
+    for (const s of [g.name + ": " + g.n, String(g.n), ""]) {
+      t.textContent = s;
+      if (t.getComputedTextLength() <= w - 12) break;
+    }
+
+    const hit = el("rect", { x, y: barY, width: w, height: barH, fill: "transparent" });
     hit.addEventListener("mousemove", ev => showTip(ev, g.name, [
       { c: g.color, k: "Задач", v: g.n, b: true },
       { k: "Доля", v: Math.round(g.n / sum * 100) + "%" }
@@ -592,19 +612,28 @@ function drawFlow() {
     x += w + 2;
   });
 
-  // legend with the counts, in the same order as the bar; wraps on narrow screens
-  const leg = document.createElement("div");
-  leg.className = "legend";
-  for (const g of segs) {
-    const it = document.createElement("span");
-    const sw = document.createElement("i");
-    sw.style.background = g.color;
-    it.appendChild(sw);
-    it.appendChild(document.createTextNode(g.name + ": "));
-    const b = document.createElement("b"); b.textContent = g.n; it.appendChild(b);
-    leg.appendChild(it);
+  // the braces: over the shown parts of their group, with the sum at the tip
+  const groups = [
+    { parts: [segs[0], segs[1]], name: "Добавлено на неделе", y: barY - gap, dir: -1 },
+    { parts: [segs[1], segs[2]], name: "Сделано", y: barY + barH + gap, dir: 1 }
+  ];
+  for (const gr of groups) {
+    const ps = gr.parts.filter(g => g.n);
+    if (!ps.length) continue;
+    const x1 = ps[0].x + 1, x2 = ps[ps.length - 1].x + ps[ps.length - 1].w - 1;
+    svg.appendChild(el("path", { d: brace(x1, x2, gr.y, bh, gr.dir), fill: "none",
+      stroke: css("--ink-3"), "stroke-width": 1.2 }));
+    const n = ps.reduce((a, g) => a + g.n, 0);
+    const ty = gr.dir < 0 ? gr.y - bh - 5 : gr.y + bh + 13;
+    const t = el("text", { y: ty, "font-size": 12, fill: css("--ink-2") });
+    t.appendChild(document.createTextNode(gr.name + ": "));
+    const b = el("tspan", { "font-weight": 600, fill: css("--ink") });
+    b.textContent = n; t.appendChild(b);
+    svg.appendChild(t);
+    // centred on the tip, kept inside the chart
+    const tw = t.getComputedTextLength();
+    t.setAttribute("x", Math.min(Math.max(0, (x1 + x2) / 2 - tw / 2), W - tw));
   }
-  node.appendChild(leg);
 }
 
 // "2 недели", "5 недель", "21 неделю": how long, in the accusative
