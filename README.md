@@ -109,17 +109,18 @@ failed read never gets frozen into the history.
 
 To see fresh data, run `./refresh.sh` again and reload the page.
 
-### Refresh from the browser
+### Refresh on every page load
 
 ```sh
 python3 serve.py          # default port 8765
 python3 serve.py 9000     # another port
 ```
 
-Open http://127.0.0.1:8765/things3-dash.html. Served over http, the page shows the
-refresh data button: it asks `serve.py` to run
-`refresh.sh` and reloads the page when done. The button is hidden when the page
-is opened as a local file.
+Open http://127.0.0.1:8765/things3-dash.html. Every request for the page makes
+`serve.py` run `refresh.sh` first, so reloading the page in the browser shows
+fresh data; the page opens only once the build is done. When the build fails,
+the previous page is served with the last line of the error in its header. A
+page opened as a local file is not rebuilt.
 
 ## How the data is read
 
@@ -167,8 +168,9 @@ is opened as a local file.
   update that changes the schema can break it; `build_week.py` then stops with
   the SQLite error naming the missing table or column, before anything is
   written.
-- `serve.py` listens on `127.0.0.1` only, but `POST /refresh` has no protection
-  against requests sent by other web pages open in the same browser, and the
+- `serve.py` listens on `127.0.0.1` only, but any web page open in the same
+  browser can request `things3-dash.html` from it (a link or an image is
+  enough) and so run `refresh.sh`, and the
   server gives out every file in the project directory, including
   `history.sqlite`. Run it only while you need it.
 
@@ -179,7 +181,7 @@ is opened as a local file.
 | `build_week.py` | Reads the Things database, updates the history and builds `things3-dash.html` from it and the template |
 | `things3-dash.template.html` | Page template: styles, charts, the `/*__DATA__*/` placeholder |
 | `refresh.sh` | Runs the build |
-| `serve.py` | Local http server with the refresh endpoint |
+| `serve.py` | Local http server that rebuilds the page on every load |
 | `docs/history-schema.md` | Schema and rules of `history.sqlite` |
 
 ## License

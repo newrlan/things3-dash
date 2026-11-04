@@ -43,7 +43,6 @@
   }
   .top { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
   h1 { font-size:25px; font-weight:640; letter-spacing:-.02em; margin:0; }
-  .top #refresh { margin-left:auto; }
   .sub { font-size:12px; color:var(--ink-2); margin-bottom:6px; }
   .tabs { display:flex; gap:4px; margin-left:8px; }
   .tabs button.on { background:var(--card); border-color:var(--ink-3); font-weight:600; }
@@ -58,7 +57,8 @@
     border:1px solid var(--border); border-radius:7px; padding:5px 11px; cursor:pointer; }
   button:hover:not(:disabled) { border-color:var(--ink-3); }
   button:disabled { opacity:.4; cursor:default; }
-  .rstat { font-size:12px; color:var(--ink-3); }
+  .rstat { font-size:12px; color:var(--ink-3); margin-left:auto; }
+  .rstat.err { color:var(--op1); }
   .week { font-weight:600; font-size:14px; min-width:186px; text-align:center; }
 
 
@@ -111,7 +111,6 @@
     <button data-tab="year">Год</button>
   </div>
   <span class="rstat" id="rstat"></span>
-  <button id="refresh" hidden>Обновить данные</button>
 </div>
 
 <div id="tab-week">
@@ -1242,27 +1241,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 
 showTab();
 
-// The button exists only when the page is served by serve.py: a file:// page
-// has no way to run anything on the machine.
-const rbtn = document.getElementById("refresh"), rstat = document.getElementById("rstat");
-if (location.protocol === "http:" || location.protocol === "https:") {
-  rbtn.hidden = false;
-  rbtn.onclick = async () => {
-    rbtn.disabled = true;
-    rbtn.textContent = "Обновляю...";
-    rstat.textContent = "";
-    try {
-      const res = await fetch("/refresh", { method: "POST" });
-      const j = await res.json();
-      if (j.ok) { location.reload(); return; }
-      rstat.textContent = (j.out || "").split("\n").filter(Boolean).pop() || "не удалось";
-    } catch (e) {
-      rstat.textContent = String(e);
-    }
-    rbtn.textContent = "Обновить данные";
-    rbtn.disabled = false;
-  };
-}
+// serve.py rebuilds the page on every load and, when the build fails, writes
+// the error into #rstat of the previous page.
 </script>
 </body>
 </html>

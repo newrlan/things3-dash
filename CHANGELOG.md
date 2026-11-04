@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The page is `things3-dash.html` instead of `week.html`, built from
   `things3-dash.template.html`: it holds the year tab too, not only the week.
+- `serve.py` rebuilds the page on every load instead of on a button press; the
+  refresh data button and `POST /refresh` are removed. A failed build serves
+  the previous page with the error in its header.
 
 ## [0.4.0] - 2026-10-10
 
