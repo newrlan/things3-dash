@@ -32,7 +32,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         print("-- запуск refresh.sh", flush=True)
         try:
-            r = subprocess.run([SCRIPT], capture_output=True, text=True, timeout=300)
+            # stdin of a detached server may be closed; a child python inheriting
+            # it dies in init_sys_streams before running a line
+            r = subprocess.run([SCRIPT], stdin=subprocess.DEVNULL, capture_output=True,
+                               text=True, timeout=300)
             body = {"ok": r.returncode == 0,
                     "out": (r.stdout + r.stderr).strip()[-4000:]}
         except Exception as e:                      # noqa: BLE001 - report anything back to the page
