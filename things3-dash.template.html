@@ -978,10 +978,14 @@ function drawYear() {
   const noteText = el("text", { y: padT + plotH / 2 + 4 - lift, "font-size": 12, "font-weight": 500, fill: css("--ink") });
   note.appendChild(noteBox); note.appendChild(noteText);
 
-  // hovering a name fades everything that is not the project: the weeks outside
-  // its life, from the week of its start to the week it was closed in (today for
-  // an open one), and the names, dots and lines of the other projects
+  // hovering a name fades everything that is not the project: the weeks in which
+  // no task of it was closed, all of them outside its life (from the week of its
+  // start to the week it was closed in, today for an open one), and the names,
+  // dots and lines of the other projects
   const FADE = 0.25;
+  // a week of the strip where the lit project saw no work, inside its life or
+  // outside it, is all but gone: only its place is left
+  const IDLE = 0.06;
   const others = [];                              // every name, dot and line; the project's own come up on plates
   const weekOf = iso => {
     const i = slots.findIndex(q => q.ws === mondayOf(iso));
@@ -1048,7 +1052,9 @@ function drawYear() {
   svg.addEventListener("click", () => focus.unpin());
   function showSpan(p) {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
-    cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
+    // [added, closed] of the project in a week, as on the note of a week
+    const worked = ws => DATA.wk[ws] && ((DATA.wk[ws].y || {})[p.id] || [0, 0])[1] > 0;
+    cells.forEach((c, i) => { if (i < a || i > b || !worked(slots[i].ws)) c.setAttribute("opacity", IDLE); });
     for (const e of others) e.setAttribute("opacity", FADE);
     if (p.lifeless) return;                       // nothing to measure
 
