@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The page is `things3-dash.html` instead of `week.html`, built from
   `things3-dash.template.html`: it holds the year tab too, not only the week.
+- `serve.py` rebuilds the page on every load instead of on a button press; the
+  refresh data button and `POST /refresh` are removed. A failed build serves
+  the previous page with the error in its header.
+- Projects of the week: a dashed line leads from each project name to its
+  bars, broken around the state square.
+- Year tab: a lit project leaves visible only the weeks in which a task of it
+  was closed; every other week, inside its life or outside it, is all but gone.
 
 ## [0.4.0] - 2026-10-10
 

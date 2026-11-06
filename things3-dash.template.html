@@ -43,7 +43,6 @@
   }
   .top { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
   h1 { font-size:25px; font-weight:640; letter-spacing:-.02em; margin:0; }
-  .top #refresh { margin-left:auto; }
   .sub { font-size:12px; color:var(--ink-2); margin-bottom:6px; }
   .tabs { display:flex; gap:4px; margin-left:8px; }
   .tabs button.on { background:var(--card); border-color:var(--ink-3); font-weight:600; }
@@ -58,7 +57,8 @@
     border:1px solid var(--border); border-radius:7px; padding:5px 11px; cursor:pointer; }
   button:hover:not(:disabled) { border-color:var(--ink-3); }
   button:disabled { opacity:.4; cursor:default; }
-  .rstat { font-size:12px; color:var(--ink-3); }
+  .rstat { font-size:12px; color:var(--ink-3); margin-left:auto; }
+  .rstat.err { color:var(--op1); }
   .week { font-weight:600; font-size:14px; min-width:186px; text-align:center; }
 
 
@@ -96,6 +96,8 @@
   .legend b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
   .legend .group { display:flex; flex-wrap:wrap; gap:4px 18px; padding:3px 10px; border-radius:4px;
                    background:var(--fill); }
+  .score { margin-left:auto; font-size:12px; color:var(--ink-2); cursor:default; }
+  .score b { font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums; }
   .empty { color:var(--ink-3); font-size:13px; padding:20px 2px; }
 </style>
 </head>
@@ -109,7 +111,6 @@
     <button data-tab="year">Год</button>
   </div>
   <span class="rstat" id="rstat"></span>
-  <button id="refresh" hidden>Обновить данные</button>
 </div>
 
 <div id="tab-week">
@@ -123,7 +124,7 @@
 
 <div class="pair">
 <div class="card">
-  <div class="bhd"><h2>Распределение закрытий по дням недели</h2></div>
+  <div class="bhd"><h2>Распределение закрытий по дням недели</h2><span class="score" id="dayscore"></span></div>
   <div class="chart" id="days"></div>
 </div>
 
@@ -228,9 +229,9 @@ function niceTicks(max, count) {
 }
 // the three parts of a week's flow, in the order of DATA.wk[week].f
 const FLOW = [
-  { color: () => css("--op2"), name: "Новые не закрытые задачи" },
-  { color: () => css("--cl2"), name: "Новые закрытые задачи" },
-  { color: () => css("--cl1"), name: "Старые закрытые задачи" }
+  { color: () => css("--op2"), name: "Открытые", ink: "#0b0b0b" },
+  { color: () => css("--cl2"), name: "Новые закрытые", ink: "#0b0b0b" },
+  { color: () => css("--cl1"), name: "Старые закрытые", ink: "#ffffff" }
 ];
 let week = DATA.current;
 
@@ -295,6 +296,8 @@ function drawDays() {
     if (v.length === 7) weeks.push(v);
   }
   const cur = weekCloses(week);
+  const score = document.getElementById("dayscore");
+  score.innerHTML = ""; score.onmousemove = score.onmouseleave = null;
   if (weeks.length < 5) {
     node.innerHTML = '<div class="empty">Недостаточно завершённых недель.</div>';
     return;
@@ -356,20 +359,63 @@ function drawDays() {
       lb.textContent = cur[d]; svg.appendChild(lb);
     }
 
+    // number of closures of the cell under the cursor; the cell of this week
+    // already carries its label
+    const lv = el("text", { x: X(d) + 6 + sw / 2, "text-anchor": "middle", "font-size": 10,
+      "font-weight": 600, fill: "#fff", "pointer-events": "none", visibility: "hidden" });
+    svg.appendChild(lv);
+
     const hit = el("rect", { x: X(d), y: padT, width: colW, height: ih, fill: "transparent" });
     hit.addEventListener("mousemove", ev => {
       const b = svg.getBoundingClientRect();
       const yy = (ev.clientY - b.top) * (H / b.height);
       const k = Math.max(0, Math.min(CAP + 1, Math.floor((padT + ih - yy) / cellH)));
-      showTip(ev, ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"][d] +
-        ", " + (k > CAP ? (CAP + 1) + " и больше" : k + " закрытий"), [
+      lv.textContent = k > CAP ? (CAP + 1) + "+" : k;
+      lv.setAttribute("y", Y(k) + cellH / 2 + 3.5);
+      lv.setAttribute("visibility", k === hereK ? "hidden" : "visible");
+      showTip(ev, ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"][d], [
         { k: "Мода по модели", v: st.mode },
-        { k: "Эта неделя", v: cur[d] === undefined ? "-" : cur[d], b: true }
+        // the top cell is already a tail total, nothing above it is known
+        ...(k > CAP ? [] : [{ k: "Вероятность закрыть больше " + k,
+          v: (st.p.slice(k + 1).reduce((a, q) => a + q, 0) * 100).toFixed(1) + "%" }])
       ]);
     });
-    hit.addEventListener("mouseleave", hideTip);
+    hit.addEventListener("mouseleave", () => { lv.setAttribute("visibility", "hidden"); hideTip(); });
     svg.appendChild(hit);
   });
+
+  // efficiency of the week: average over the finished days of P(X <= x), the
+  // share of typical days that closed no more than this one; today is left out
+  // until it ends. The norm is its expectation under the model: for two
+  // independent typical days P(X' <= X) = (1 + sum p_k^2) / 2.
+  const done = idxOf(week) + cur.length - 1 === idxOf(DATA.today) ? cur.length - 1 : cur.length;
+  const full = ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"];
+  const tips = [];
+  let sum = 0, normSum = 0;
+  for (let d = 0; d < done; d++) {
+    const { m, va } = stats[d];
+    let acc = 0, le = 0, sq = 0;
+    for (let k = 0; acc < 1 - 1e-12 || k <= cur[d]; k++) {
+      const q = negbin(m, va, k);
+      acc += q; sq += q * q;
+      if (k === cur[d]) le = acc;
+    }
+    tips.push({ k: full[d] + ", " + cur[d] + " закр.", v: le.toFixed(2) });
+    sum += le; normSum += (1 + sq) / 2;
+  }
+  if (done) {
+    const e = sum / done, norm = normSum / done;
+    score.innerHTML = `Эффективность недели <b>${e.toFixed(2)}</b>`;
+    score.onmousemove = ev => showTip(ev, "Доля типичных дней, закрывших не больше", [
+      ...tips,
+      { k: "Эффективность недели", v: e.toFixed(2), b: true, top: true },
+      { k: "Норма по модели", v: norm.toFixed(2) },
+      ...(done < cur.length ? [{ k: "Сегодня не учитывается, день не закончен", v: "", top: true }] : [])
+    ]);
+    score.onmouseleave = hideTip;
+  } else {
+    score.textContent = "Оценка появится после первого завершённого дня";
+  }
 
   node.innerHTML = ""; node.appendChild(svg);
 }
@@ -508,11 +554,19 @@ function drawAreas() {
 }
 
 
+// a horizontal curly brace from x1 to x2 along y, its tip h away in dir (-1 up, 1 down)
+function brace(x1, x2, y, h, dir) {
+  const m = (x1 + x2) / 2, q = Math.min(h / 2, (x2 - x1) / 4), yq = y + dir * q, yt = y + dir * h;
+  return `M${x1},${y} Q${x1},${yq} ${x1 + q},${yq} L${m - q},${yq} Q${m},${yq} ${m},${yt}`
+    + ` Q${m},${yq} ${m + q},${yq} L${x2 - q},${yq} Q${x2},${yq} ${x2},${y}`;
+}
+
 // one stacked bar for the shown week: what was added and is still open, what
-// was added and already done, and what was done from earlier weeks
+// was added and already done, and what was done from earlier weeks; a brace
+// above sums the added (the first two parts), one below sums the done (the last two)
 function drawFlow() {
   const node = document.getElementById("flow");
-  const segs = FLOW.map((g, i) => ({ n: DATA.wk[week].f[i], color: g.color(), name: g.name }));
+  const segs = FLOW.map((g, i) => ({ n: DATA.wk[week].f[i], color: g.color(), name: g.name, ink: g.ink }));
   const sum = segs.reduce((a, g) => a + g.n, 0);
   if (!sum) {
     node.innerHTML = '<div class="empty">На этой неделе ничего не добавлено и не сделано.</div>';
@@ -520,8 +574,9 @@ function drawFlow() {
   }
 
   const W = Math.max(260, node.clientWidth || 900);
-  const barH = 22;
-  const svg = el("svg", { width: W, height: barH, viewBox: `0 0 ${W} ${barH}` });
+  const barH = 26, bh = 9, labH = 18, gap = 4;
+  const barY = labH + bh + gap, H = barY + barH + gap + bh + labH;
+  const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
   node.innerHTML = ""; node.appendChild(svg);
 
   // segments share the width by count; a 2px gap of card colour between them
@@ -530,12 +585,23 @@ function drawFlow() {
   let x = 0;
   shown.forEach((g, k) => {
     const w = g.n * unit;
+    g.x = x; g.w = w;
     const first = k === 0, last = k === shown.length - 1, r = 4;
-    const d = first && last ? barL(x, 0, w / 2, barH, r) + barR(x + w / 2, 0, w / 2, barH, r)
-      : first ? barL(x, 0, w, barH, r) : last ? barR(x, 0, w, barH, r)
-      : `M${x},0 h${w} v${barH} h${-w} Z`;
+    const d = first && last ? barL(x, barY, w / 2, barH, r) + barR(x + w / 2, barY, w / 2, barH, r)
+      : first ? barL(x, barY, w, barH, r) : last ? barR(x, barY, w, barH, r)
+      : `M${x},${barY} h${w} v${barH} h${-w} Z`;
     svg.appendChild(el("path", { d, fill: g.color }));
-    const hit = el("rect", { x, y: 0, width: w, height: barH, fill: "transparent" });
+
+    // the name and count inside the segment; only the count if the name does not fit
+    const t = el("text", { x: x + w / 2, y: barY + barH / 2 + 4, "text-anchor": "middle",
+      "font-size": 12, fill: g.ink, "pointer-events": "none" });
+    svg.appendChild(t);
+    for (const s of [g.name + ": " + g.n, String(g.n), ""]) {
+      t.textContent = s;
+      if (t.getComputedTextLength() <= w - 12) break;
+    }
+
+    const hit = el("rect", { x, y: barY, width: w, height: barH, fill: "transparent" });
     hit.addEventListener("mousemove", ev => showTip(ev, g.name, [
       { c: g.color, k: "Задач", v: g.n, b: true },
       { k: "Доля", v: Math.round(g.n / sum * 100) + "%" }
@@ -545,19 +611,28 @@ function drawFlow() {
     x += w + 2;
   });
 
-  // legend with the counts, in the same order as the bar; wraps on narrow screens
-  const leg = document.createElement("div");
-  leg.className = "legend";
-  for (const g of segs) {
-    const it = document.createElement("span");
-    const sw = document.createElement("i");
-    sw.style.background = g.color;
-    it.appendChild(sw);
-    it.appendChild(document.createTextNode(g.name + ": "));
-    const b = document.createElement("b"); b.textContent = g.n; it.appendChild(b);
-    leg.appendChild(it);
+  // the braces: over the shown parts of their group, with the sum at the tip
+  const groups = [
+    { parts: [segs[0], segs[1]], name: "Добавлено на неделе", y: barY - gap, dir: -1 },
+    { parts: [segs[1], segs[2]], name: "Сделано", y: barY + barH + gap, dir: 1 }
+  ];
+  for (const gr of groups) {
+    const ps = gr.parts.filter(g => g.n);
+    if (!ps.length) continue;
+    const x1 = ps[0].x + 1, x2 = ps[ps.length - 1].x + ps[ps.length - 1].w - 1;
+    svg.appendChild(el("path", { d: brace(x1, x2, gr.y, bh, gr.dir), fill: "none",
+      stroke: css("--ink-3"), "stroke-width": 1.2 }));
+    const n = ps.reduce((a, g) => a + g.n, 0);
+    const ty = gr.dir < 0 ? gr.y - bh - 5 : gr.y + bh + 13;
+    const t = el("text", { y: ty, "font-size": 12, fill: css("--ink-2") });
+    t.appendChild(document.createTextNode(gr.name + ": "));
+    const b = el("tspan", { "font-weight": 600, fill: css("--ink") });
+    b.textContent = n; t.appendChild(b);
+    svg.appendChild(t);
+    // centred on the tip, kept inside the chart
+    const tw = t.getComputedTextLength();
+    t.setAttribute("x", Math.min(Math.max(0, (x1 + x2) / 2 - tw / 2), W - tw));
   }
-  node.appendChild(leg);
 }
 
 // "2 недели", "5 недель", "21 неделю": how long, in the accusative
@@ -604,8 +679,14 @@ function draw() {
   svg.appendChild(el("line", { x1: zeroX + .5, y1: 2, x2: zeroX + .5, y2: H - 8,
     stroke: css("--line"), "stroke-width": 1 }));
 
+  // a dashed leader from the end of each name to its bars; the ends are
+  // measured once the svg is on the page
+  const leaders = [];
+
   ps.forEach((x, i) => {
     const y = 4 + i * rowH, yb = y + (rowH - barH) / 2;
+    const lead = { y: Math.round(yb + barH / 2) + .5, end: zeroX, val: null, mark: false };
+    leaders.push(lead);
     let xr = zeroX + 1;
     for (const cat of CAT.filter(c => c.right)) {
       const n = x.c[cat.id]; if (!n) continue;
@@ -625,6 +706,7 @@ function draw() {
     if (x.c.oo + x.c.on) {
       const t = el("text", { class: "val", x: xl - 5, y: yb + barH - 3, "text-anchor": "end" });
       t.textContent = x.c.oo + x.c.on; svg.appendChild(t);
+      lead.end = xl - 5; lead.val = t;
     }
     if (stalled(x)) {
       const t = el("text", { x: zeroX + 8, y: yb + barH - 3, "font-size": 11, "font-style": "italic", fill: css("--ink-3") });
@@ -633,6 +715,7 @@ function draw() {
 
     const st = x.p.st;
     if (STATE[st].mark) {
+      lead.mark = true;
       svg.appendChild(el("rect", {
         x: labW - 20, y: yb + 4, width: 8, height: 8, rx: 2,
         fill: STATE[st].mark === "solid" ? css("--cl1") : "none",
@@ -646,6 +729,7 @@ function draw() {
     // the name is a link that opens the project in Things
     const link = el("a", { href: "things:///show?id=" + encodeURIComponent(x.p.id) });
     link.appendChild(lab); svg.appendChild(link);
+    lead.lab = lab;
 
     const hit = el("rect", { x: labW, y: y, width: W - labW, height: rowH, fill: "transparent" });
     hit.addEventListener("mousemove", ev => showTip(ev, x.p.t,
@@ -656,6 +740,19 @@ function draw() {
   });
 
   node.innerHTML = ""; node.appendChild(svg);
+  // the line breaks around the state square (labW - 20 .. labW - 12)
+  const gapL = labW - 24, gapR = labW - 8;
+  for (const l of leaders) {
+    const x1 = 4 + l.lab.getComputedTextLength() + 6;
+    const x2 = (l.val ? l.end - l.val.getComputedTextLength() : l.end) - 4;
+    const segs = l.mark ? [[x1, gapL], [Math.max(x1, gapR), x2]] : [[x1, x2]];
+    for (const [a, b] of segs) {
+      if (b - a < 6) continue;
+      svg.insertBefore(el("line", { x1: a, y1: l.y, x2: b, y2: l.y,
+        stroke: css("--ink-3"), "stroke-opacity": .5, "stroke-width": 1,
+        "stroke-dasharray": "2 3", "pointer-events": "none" }), svg.firstChild);
+    }
+  }
   drawAreas();
   drawFlow();
   drawDays();
@@ -881,10 +978,14 @@ function drawYear() {
   const noteText = el("text", { y: padT + plotH / 2 + 4 - lift, "font-size": 12, "font-weight": 500, fill: css("--ink") });
   note.appendChild(noteBox); note.appendChild(noteText);
 
-  // hovering a name fades everything that is not the project: the weeks outside
-  // its life, from the week of its start to the week it was closed in (today for
-  // an open one), and the names, dots and lines of the other projects
+  // hovering a name fades everything that is not the project: the weeks in which
+  // no task of it was closed, all of them outside its life (from the week of its
+  // start to the week it was closed in, today for an open one), and the names,
+  // dots and lines of the other projects
   const FADE = 0.25;
+  // a week of the strip where the lit project saw no work, inside its life or
+  // outside it, is all but gone: only its place is left
+  const IDLE = 0.06;
   const others = [];                              // every name, dot and line; the project's own come up on plates
   const weekOf = iso => {
     const i = slots.findIndex(q => q.ws === mondayOf(iso));
@@ -951,7 +1052,9 @@ function drawYear() {
   svg.addEventListener("click", () => focus.unpin());
   function showSpan(p) {
     const a = weekOf(p.from), b = weekOf(p.to || DATA.today);
-    cells.forEach((c, i) => { if (i < a || i > b) c.setAttribute("opacity", FADE); });
+    // [added, closed] of the project in a week, as on the note of a week
+    const worked = ws => DATA.wk[ws] && ((DATA.wk[ws].y || {})[p.id] || [0, 0])[1] > 0;
+    cells.forEach((c, i) => { if (i < a || i > b || !worked(slots[i].ws)) c.setAttribute("opacity", IDLE); });
     for (const e of others) e.setAttribute("opacity", FADE);
     if (p.lifeless) return;                       // nothing to measure
 
@@ -1166,27 +1269,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
 
 showTab();
 
-// The button exists only when the page is served by serve.py: a file:// page
-// has no way to run anything on the machine.
-const rbtn = document.getElementById("refresh"), rstat = document.getElementById("rstat");
-if (location.protocol === "http:" || location.protocol === "https:") {
-  rbtn.hidden = false;
-  rbtn.onclick = async () => {
-    rbtn.disabled = true;
-    rbtn.textContent = "Обновляю...";
-    rstat.textContent = "";
-    try {
-      const res = await fetch("/refresh", { method: "POST" });
-      const j = await res.json();
-      if (j.ok) { location.reload(); return; }
-      rstat.textContent = (j.out || "").split("\n").filter(Boolean).pop() || "не удалось";
-    } catch (e) {
-      rstat.textContent = String(e);
-    }
-    rbtn.textContent = "Обновить данные";
-    rbtn.disabled = false;
-  };
-}
+// serve.py rebuilds the page on every load and, when the build fails, writes
+// the error into #rstat of the previous page.
 </script>
 </body>
 </html>
