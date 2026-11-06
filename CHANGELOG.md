@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-06
+
+### Added
+
+- "Closures by weekday": the efficiency of the week next to the title, the
+  average over the finished days of the share of typical days that closed no
+  more than this one; hovering it gives the norm by the model. Today is left
+  out until it ends.
+- "Closures by weekday": hovering a cell gives the number of closures in it and
+  the probability to close more than that.
+- "Added and done in the week": a brace above the bar sums the added tasks, one
+  below sums the done ones.
+
 ### Changed
 
 - The page is `things3-dash.html` instead of `week.html`, built from
@@ -119,7 +132,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local http server `serve.py` with a refresh button on the page.
 - README with setup and usage instructions, dashboard screenshot.
 
-[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/newrlan/things3-dash/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/newrlan/things3-dash/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/newrlan/things3-dash/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/newrlan/things3-dash/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/newrlan/things3-dash/compare/v0.2.0...v0.3.0
