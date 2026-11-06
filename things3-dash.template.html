@@ -679,8 +679,14 @@ function draw() {
   svg.appendChild(el("line", { x1: zeroX + .5, y1: 2, x2: zeroX + .5, y2: H - 8,
     stroke: css("--line"), "stroke-width": 1 }));
 
+  // a dashed leader from the end of each name to its bars; the ends are
+  // measured once the svg is on the page
+  const leaders = [];
+
   ps.forEach((x, i) => {
     const y = 4 + i * rowH, yb = y + (rowH - barH) / 2;
+    const lead = { y: Math.round(yb + barH / 2) + .5, end: zeroX, val: null, mark: false };
+    leaders.push(lead);
     let xr = zeroX + 1;
     for (const cat of CAT.filter(c => c.right)) {
       const n = x.c[cat.id]; if (!n) continue;
@@ -700,6 +706,7 @@ function draw() {
     if (x.c.oo + x.c.on) {
       const t = el("text", { class: "val", x: xl - 5, y: yb + barH - 3, "text-anchor": "end" });
       t.textContent = x.c.oo + x.c.on; svg.appendChild(t);
+      lead.end = xl - 5; lead.val = t;
     }
     if (stalled(x)) {
       const t = el("text", { x: zeroX + 8, y: yb + barH - 3, "font-size": 11, "font-style": "italic", fill: css("--ink-3") });
@@ -708,6 +715,7 @@ function draw() {
 
     const st = x.p.st;
     if (STATE[st].mark) {
+      lead.mark = true;
       svg.appendChild(el("rect", {
         x: labW - 20, y: yb + 4, width: 8, height: 8, rx: 2,
         fill: STATE[st].mark === "solid" ? css("--cl1") : "none",
@@ -721,6 +729,7 @@ function draw() {
     // the name is a link that opens the project in Things
     const link = el("a", { href: "things:///show?id=" + encodeURIComponent(x.p.id) });
     link.appendChild(lab); svg.appendChild(link);
+    lead.lab = lab;
 
     const hit = el("rect", { x: labW, y: y, width: W - labW, height: rowH, fill: "transparent" });
     hit.addEventListener("mousemove", ev => showTip(ev, x.p.t,
@@ -731,6 +740,19 @@ function draw() {
   });
 
   node.innerHTML = ""; node.appendChild(svg);
+  // the line breaks around the state square (labW - 20 .. labW - 12)
+  const gapL = labW - 24, gapR = labW - 8;
+  for (const l of leaders) {
+    const x1 = 4 + l.lab.getComputedTextLength() + 6;
+    const x2 = (l.val ? l.end - l.val.getComputedTextLength() : l.end) - 4;
+    const segs = l.mark ? [[x1, gapL], [Math.max(x1, gapR), x2]] : [[x1, x2]];
+    for (const [a, b] of segs) {
+      if (b - a < 6) continue;
+      svg.insertBefore(el("line", { x1: a, y1: l.y, x2: b, y2: l.y,
+        stroke: css("--ink-3"), "stroke-opacity": .5, "stroke-width": 1,
+        "stroke-dasharray": "2 3", "pointer-events": "none" }), svg.firstChild);
+    }
+  }
   drawAreas();
   drawFlow();
   drawDays();

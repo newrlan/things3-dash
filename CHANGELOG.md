@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `serve.py` rebuilds the page on every load instead of on a button press; the
   refresh data button and `POST /refresh` are removed. A failed build serves
   the previous page with the error in its header.
+- Projects of the week: a dashed line leads from each project name to its
+  bars, broken around the state square.
 
 ## [0.4.0] - 2026-10-10
 
